@@ -10,7 +10,7 @@
     "test": "vitest run",
     "lint": "biome lint .",
     "format": "biome format --write .",
-    "security-scan": "npm audit"
+    "security-scan": "npm audit --audit-level=critical"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.1",
