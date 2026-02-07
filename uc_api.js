@@ -64,6 +64,22 @@ class UnitCommanderAPI {
     if (error) console.error('[SUPABASE] saveSteamLink Error:', error.message);
   }
 
+  async saveGuid(discordId, guid) {
+    console.log(`[SUPABASE] Linking Discord:${discordId} to GUID:${guid}`);
+    const { error } = await supabase
+      .from('personnel')
+      .upsert(
+        {
+          discord_id: discordId,
+          be_guid: guid,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'discord_id' },
+      );
+
+    if (error) console.error('[SUPABASE] saveGuid Error:', error.message);
+  }
+
   async getLinks() {
     const { data, error } = await supabase
       .from('personnel')

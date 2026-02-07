@@ -270,6 +270,10 @@ const commands = [
     description:
       'Automatically link your SteamID by detecting your current game session.',
   },
+  {
+    name: 'help',
+    description: 'Display a list of all available tactical commands.',
+  },
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

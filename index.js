@@ -126,7 +126,7 @@ async function handleInGameCommand(output) {
       case 'sync': {
         console.log(`[SYNC] In-game request from ${playerName}`);
         
-        // 1. Try Gamedig first (usually reliable for SteamID64)
+        // 1. Try Gamedig first (Deep Scan)
         const state = await Gamedig.query({
           type: AUTO_ATTENDANCE_CONFIG.server.type,
           host: AUTO_ATTENDANCE_CONFIG.server.host,
@@ -134,38 +134,46 @@ async function handleInGameCommand(output) {
         }).catch(() => null);
 
         let steamId = null;
+        let beGuid = null;
+
         if (state) {
           const pMatch = state.players.find(p => cleanName(p.name) === cleanName(playerName));
-          if (pMatch?.raw?.steamid) steamId = pMatch.raw.steamid;
+          if (pMatch) {
+            const potentialIds = [pMatch.raw?.steamid, pMatch.raw?.guid, pMatch.raw?.id, pMatch.raw?.extra?.steamid];
+            steamId = potentialIds.find(id => id && /^\d{17}$/.test(id.toString()));
+            // Capture GUID if SteamID is missing
+            if (!steamId) beGuid = pMatch.raw?.guid || pMatch.raw?.id;
+          }
         }
 
         // 2. Try RCON as fallback
-        if (!steamId) {
+        if (!steamId && !beGuid) {
           const rconPlayers = await rcon.getPlayers();
           const rMatch = rconPlayers.find(rp => cleanName(rp.name) === cleanName(playerName));
           if (rMatch?.steamId) steamId = rMatch.steamId;
+          if (rMatch?.guid) beGuid = rMatch.beGuid;
         }
         
-        if (steamId) {
-          // Attempt to find existing personnel record by nickname
-          const { data: personnel } = await ucApi.supabase
-            .from('personnel')
-            .select('discord_id, display_name')
-            .ilike('display_name', `%${cleanName(playerName)}%`)
-            .limit(1)
-            .single();
+        if (steamId || beGuid) {
+          const { data: personnel } = await ucApi.supabase.from('personnel').select('discord_id, display_name');
+          const matchedPerson = personnel?.find(p => cleanName(p.display_name).includes(cleanName(playerName)) || cleanName(playerName).includes(cleanName(p.display_name)));
 
-          if (personnel) {
-            await ucApi.saveSteamLink(personnel.discord_id, steamId);
+          if (matchedPerson) {
+            if (steamId) await ucApi.saveSteamLink(matchedPerson.discord_id, steamId);
+            if (beGuid) await ucApi.saveGuid(matchedPerson.discord_id, beGuid);
+            
             rcon.execute(`say -1 [BOT] Identity Sync Successful: Linked "${playerName}" to Discord.`);
           } else {
             rcon.execute(`say -1 [BOT] Sync Failed: Could not find Discord record matching "${playerName}".`);
           }
         } else {
-          rcon.execute(`say -1 [BOT] Sync Failed: Server did not report your SteamID64. Use Discord /steam manually.`);
+          rcon.execute(`say -1 [BOT] Sync Failed: Server reported no valid IDs. Use Discord /steam manually.`);
         }
         break;
       }
+      case 'help':
+        rcon.execute('say -1 [BOT] In-Game Commands: !status (Server population), !sync (Link identities), !verify (Setup instructions).');
+        break;
     }
   }
 
@@ -362,9 +370,31 @@ async function handleChatInput(interaction) {
       return handleStatus(interaction);
     case 'sync':
       return handleSync(interaction);
+    case 'help':
+      return handleHelp(interaction);
     default:
       console.warn(`[SYSTEM] UNKNOWN CMD: ${commandName}`);
   }
+}
+
+/**
+ * TACTICAL HELP HANDLER
+ */
+async function handleHelp(interaction) {
+  const embed = new EmbedBuilder()
+    .setColor(COLORS.INTEL_GREEN)
+    .setTitle('UKSF TACTICAL TERMINAL // COMMAND REFERENCE')
+    .setDescription('Below are the available commands for members and administrators.')
+    .addFields(
+      { name: '👤 PERSONNEL', value: '`/verify` - unified setup\n`/sync` - auto-link steam\n`/dossier <member>` - tactical record\n`/steam <id>` - manual link' },
+      { name: '⚔️ OPERATIONS', value: '`/status` - server info\n`/mission recent` - unit history\n`/op create` - create opord' },
+      { name: '🛠️ ADMINISTRATION', value: '`/personnel promote` - promote member\n`/personnel discharge` - remove member\n`/rcon <cmd>` - execute raw rcon' },
+      { name: '🎮 IN-GAME (Arma 3)', value: '`!status` - quick stats\n`!sync` - cloud sync\n`!help` - command list' }
+    )
+    .setFooter({ text: 'TRANSMISSION AUTHENTICATED // 18 SIG REGT' })
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
 }
 
 /**
