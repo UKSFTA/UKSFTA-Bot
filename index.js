@@ -96,7 +96,7 @@ async function handleInGameCommand(output) {
   if (!chatMatch) return;
 
   const [_, channel, playerName, fullCmd] = chatMatch;
-  const [command, ...args] = fullCmd.trim().split(' ');
+  const [command, ..._args] = fullCmd.trim().split(' ');
 
   console.log(`[IN-GAME] Command detected: ${playerName} on ${channel} -> !${command}`);
 
@@ -105,7 +105,7 @@ async function handleInGameCommand(output) {
       rcon.execute(`say -1 [BOT] Hello ${playerName}. To verify your identity, use the /verify command in Discord.`);
       break;
     
-    case 'status':
+    case 'status': {
       const state = await Gamedig.query({
         type: AUTO_ATTENDANCE_CONFIG.server.type,
         host: AUTO_ATTENDANCE_CONFIG.server.host,
@@ -116,6 +116,7 @@ async function handleInGameCommand(output) {
         rcon.execute(`say -1 [BOT] Server Status: ${state.players.length}/${state.maxplayers} personnel on station. Map: ${state.map}`);
       }
       break;
+    }
 
     case 'sync':
       rcon.execute(`say -1 [BOT] ${playerName}, syncing... Ensure your Discord nickname matches your in-game name.`);
@@ -200,7 +201,7 @@ async function handleSync(interaction) {
         cleanName(rp.name) === cleanName(player.name)
       );
       
-      if (rconMatch && rconMatch.steamId) {
+      if (rconMatch?.steamId) {
         steamId = rconMatch.steamId;
         console.log(`[SYNC] RCON Success: Found SteamID ${steamId} for ${player.name}`);
       }
@@ -454,7 +455,7 @@ async function monitorGameServer(forceLog = false) {
       `[MONITOR] Server: ${state.name} | Players: ${state.players.length}/${state.maxplayers}`,
     );
 
-    const steamIds = state.players
+    const _steamIds = state.players
       .map((p) => p.raw?.steamid)
       .filter((id) => id && /^\d{17}$/.test(id));
 
@@ -509,10 +510,10 @@ async function monitorGameServer(forceLog = false) {
         const cleanedPlayerName = cleanName(player.name);
         const rconMatch = rconPlayers.find(rp => cleanName(rp.name) === cleanedPlayerName);
         
-        if (rconMatch && rconMatch.steamId) {
+        if (rconMatch?.steamId) {
           steamId = rconMatch.steamId;
           resolutionMethod = "RCON (STEAMID)";
-        } else if (rconMatch && rconMatch.guid) {
+        } else if (rconMatch?.guid) {
           // If we only have a GUID, we log it but don't set steamId yet (unless we implement GUID -> SteamID)
           console.log(`[MONITOR] RCON matched BE GUID for ${player.name}: ${rconMatch.guid}`);
         }
@@ -792,35 +793,37 @@ async function handleVerify(interaction) {
     });
     
     // Check if user is already linked
-    const existingLinks = ucApi.getSteamLinks();
-    if (existingLinks[interaction.user.id]) {
-      presenceMsg = '\n✅ **STEAM LINK:** ALREADY ACTIVE';
-    } else {
-      // Find on server
-      const targetName = cleanName(interaction.member.displayName);
-      const player = state.players.find(p => 
-        cleanName(p.name).includes(targetName) || 
-        targetName.includes(cleanName(p.name))
-      );
-      
-      if (player && player.raw?.steamid) {
-        steamLinkData = player.raw.steamid;
-        presenceMsg = `\n✅ **STEAM LINK:** DETECTED ON SERVER AS **${player.name}**`;
-      } else if (player) {
-        // RCON Fallback for Verify
-        const rconPlayers = await rcon.getPlayers();
-        const rconMatch = rconPlayers.find(rp => cleanName(rp.name) === targetName);
-        if (rconMatch && rconMatch.steamId) {
-          steamLinkData = rconMatch.steamId;
-          presenceMsg = `\n✅ **STEAM LINK:** DETECTED VIA RCON AS **${player.name}**`;
+        const existingLinks = ucApi.getSteamLinks();
+        if (existingLinks[interaction.user.id]) {
+          presenceMsg = '\n✅ **STEAM LINK:** ALREADY ACTIVE';
         } else {
-          presenceMsg = '\n⚠️ **STEAM LINK:** DETECTED BUT NO ID REPORTED (Use /steam manually)';
-        }
-      } else {
+          // Find on server
+          const targetName = cleanName(interaction.member.displayName);
+          const player = state.players.find(p => 
+            cleanName(p.name).includes(targetName) || 
+            targetName.includes(cleanName(p.name))
+          );
+          
+          if (player?.raw?.steamid) {
+            steamLinkData = player.raw.steamid;
+            presenceMsg = `\n✅ **STEAM LINK:** DETECTED ON SERVER AS **${player.name}**`;
+          } else if (player) {
+    
+              // RCON Fallback for Verify
+              const rconPlayers = await rcon.getPlayers();
+              const rconMatch = rconPlayers.find(rp => cleanName(rp.name) === targetName);
+              if (rconMatch?.steamId) {
+                steamLinkData = rconMatch.steamId;
+                presenceMsg = `\n✅ **STEAM LINK:** DETECTED VIA RCON AS **${player.name}**`;
+              } else {
+                presenceMsg = '\n⚠️ **STEAM LINK:** DETECTED BUT NO ID REPORTED (Use /steam manually)';
+              }
+            }
+       else {
         presenceMsg = '\n⚠️ **STEAM LINK:** NOT DETECTED ON SERVER (Connect to auto-link)';
       }
     }
-  } catch (e) {
+  } catch (_e) {
     presenceMsg = '\n⚠️ **STEAM LINK:** SERVER OFFLINE';
   }
 

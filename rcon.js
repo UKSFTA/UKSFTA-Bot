@@ -108,7 +108,7 @@ class RconManager {
     const players = [];
     const lines = raw.split('\n');
     for (const line of lines) {
-      const match = line.match(/^\d+\s+[\d\.]+:?\d*\s+\d+\s+([a-f0-9]+)\(OK\)\s+(.+)$/i);
+      const match = line.match(/^\d+\s+[\d.]+:?\d*\s+\d+\s+([a-f0-9]+)\(OK\)\s+(.+)$/i);
       if (match) {
         const id = match[1];
         players.push({

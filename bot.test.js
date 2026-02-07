@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+const { describe, it, expect, vi } = require('vitest');
 
 // Basic sanity test for the environment
 describe('UKSF Bot Environment', () => {
@@ -19,7 +19,7 @@ vi.mock('./uc_api', () => ({
 
 describe('Identity Logic', () => {
   it('should match names correctly', async () => {
-    const ucApi = (await import('./uc_api')).default;
+    const ucApi = require('./uc_api').default;
     const profiles = await ucApi.getProfiles();
     expect(profiles).toHaveLength(2);
     expect(profiles[0].alias).toBe('M. Barker');

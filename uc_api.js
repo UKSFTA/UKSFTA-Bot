@@ -96,7 +96,7 @@ class UnitCommanderAPI {
         attendance_status_id: statusId,
       });
       return true;
-    } catch (error) {
+    } catch (_error) {
       console.error('UC API Error (submitAttendance):', error.message);
       return false;
     }
@@ -106,7 +106,7 @@ class UnitCommanderAPI {
     try {
       const response = await this.client.get(`/profiles/${profileId}`);
       return response.data;
-    } catch (error) {
+    } catch (_error) {
       return null;
     }
   }
@@ -115,7 +115,7 @@ class UnitCommanderAPI {
     try {
       const response = await this.client.get('/profiles');
       return response.data;
-    } catch (error) {
+    } catch (_error) {
       return [];
     }
   }
@@ -177,7 +177,7 @@ class UnitCommanderAPI {
     try {
       const response = await this.client.get('/ranks');
       return response.data;
-    } catch (error) {
+    } catch (_error) {
       return [];
     }
   }
@@ -186,7 +186,7 @@ class UnitCommanderAPI {
     try {
       const response = await this.client.get('/events');
       return response.data.filter(e => e.status === 'ACTIVE');
-    } catch (error) {
+    } catch (_error) {
       return [];
     }
   }
@@ -195,7 +195,7 @@ class UnitCommanderAPI {
     try {
       const response = await this.client.get('/attendance-status');
       return response.data;
-    } catch (error) {
+    } catch (_error) {
       return [];
     }
   }
@@ -204,7 +204,7 @@ class UnitCommanderAPI {
     try {
       const response = await this.client.get(`/attendance/profile/${profileId}`);
       return response.data;
-    } catch (error) {
+    } catch (_error) {
       return [];
     }
   }

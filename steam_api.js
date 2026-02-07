@@ -46,10 +46,10 @@ class SteamAPI {
 
   /**
    * Fetches server information from the IGameServersService.
-   * @param {string} ip - Server IP address.
+   * @param {string} _ip - Server IP address.
    * @returns {Promise<Object|null>} - Server object or null.
    */
-  async getServerInfo(ip) {
+  async getServerInfo(_ip) {
     if (!this.apiKey) return null;
 
     try {
