@@ -31,11 +31,21 @@ Production-grade Discord bot for UKSF Taskforce Alpha (UKSF-TA) server managemen
    npm install
    ```
 
-3. **Commands:**
-   ```bash
-   npm run deploy  # Register Slash Commands with Discord
-   npm run start   # Launch Bot
-   ```
+## Command Reference
+
+### Discord Commands (Slash)
+- `/verify`: Unified setup. Links Discord, Steam, and Unit Commander via Supabase.
+- `/status`: Real-time server diagnostics and active personnel list.
+- `/sync`: Auto-detect SteamID from active server session.
+- `/rcon <cmd>`: Admin only. Execute BattlEye RCON commands directly.
+- `/dossier <member>`: View tactical service record, ID card, and activity history.
+- `/promotion <member> <rank>`: Admin only. Process rank changes.
+- `/award <member> <medal> <citation>`: Admin only. Grant official commendations.
+
+### In-Game Commands (BattlEye Chat)
+- `!verify`: Instructions on how to link accounts via Discord.
+- `!status`: Direct in-game broadcast of server population and map info.
+- `!sync`: Acknowledgment of identity synchronization request.
 
 ## Development
 
