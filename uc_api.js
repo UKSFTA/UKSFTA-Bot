@@ -110,6 +110,21 @@ class UnitCommanderAPI {
     return mapping;
   }
 
+  async getGuidLinks() {
+    const { data, error } = await supabase
+      .from('personnel')
+      .select('discord_id, be_guid');
+    if (error) {
+      console.error('[SUPABASE] getGuidLinks Error:', error.message);
+      return {};
+    }
+    const mapping = {};
+    data.forEach((row) => {
+      if (row.be_guid) mapping[row.discord_id] = row.be_guid;
+    });
+    return mapping;
+  }
+
   async removeLink(discordId) {
     // We don't delete the record, just clear the links to preserve personnel history
     const { error } = await supabase
@@ -174,7 +189,13 @@ class UnitCommanderAPI {
     const profiles = await this.getProfiles();
     const discordName = member.displayName.toLowerCase();
 
-    return profiles.find((p) => {
+    // STRICT FILTER: Only match against ACTIVE personnel
+    const activeProfiles = profiles.filter((p) => {
+      const status = p.status?.toUpperCase();
+      return !status || status === 'ACTIVE';
+    });
+
+    return activeProfiles.find((p) => {
       const alias = p.alias.toLowerCase();
       if (alias === discordName) return true;
       const cleanedAlias = alias

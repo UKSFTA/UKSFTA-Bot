@@ -47,11 +47,11 @@ class RconManager {
       if (!Array.isArray(data)) return [];
 
       return data.map(p => {
-        const id = p.player_id || p.id_string || p.guid || '';
+        const id = p.player_id || p.id_string || p.guid || p.id || '';
         return {
           id: id,
-          steamId: /^\d{17}$/.test(id) ? id : null,
-          guid: id.length === 32 ? id : null,
+          steamId: /^\d{17}$/.test(id.toString()) ? id.toString() : null,
+          guid: id.toString().length === 32 ? id.toString() : null,
           name: p.name || 'Unknown'
         };
       });
@@ -64,9 +64,17 @@ class RconManager {
    * Starts a persistent UDP listener for real-time chat and logs
    */
   createListener(callback) {
-    if (this.isConnected) return;
+    if (this.isConnected) {
+        console.log('[RCON] Listener already connected. Skipping.');
+        return;
+    }
 
     console.log(`[RCON] Initializing persistent stream on ${this.host}:${this.port}...`);
+
+    // CLEANUP: Kill any ghost listeners to prevent double replies
+    this.bNode.removeAllListeners('message');
+    this.bNode.removeAllListeners('disconnected');
+    this.bNode.removeAllListeners('login');
 
     this.bNode.login();
 
@@ -87,7 +95,7 @@ class RconManager {
     });
 
     this.bNode.on('disconnected', () => {
-      console.warn('[RCON] Stream disconnected. Reconnecting...');
+      console.warn('[RCON] Stream disconnected. Reconnecting in 5s...');
       this.isConnected = false;
       setTimeout(() => this.createListener(callback), 5000);
     });

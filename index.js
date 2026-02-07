@@ -20,6 +20,16 @@ const ucApi = require('./uc_api');
 const steamApi = require('./steam_api');
 const rcon = require('./rcon');
 const renderer = require('./renderer');
+const CryptoJS = require('crypto-js');
+
+/**
+ * UTILITY: Calculate BattlEye GUID from SteamID64
+ */
+function calculateBeGuid(steamId64) {
+  if (!steamId64) return null;
+  const hash = CryptoJS.MD5("BE" + steamId64).toString();
+  return hash;
+}
 
 const client = new Client({
   intents: [
@@ -58,6 +68,7 @@ const AUTO_ATTENDANCE_CONFIG = {
 const operations = new Collection();
 const activeDossiers = new Collection();
 const sessionTracker = new Map(); // steamId -> { firstSeen: Date, lastSeen: Date, totalMinutes: 0 }
+const inGameCommandCache = new Map(); // Deduplication cache
 let currentMission = { id: null, name: 'BOOTING', map: 'UNKNOWN', players: 0 };
 
 client.once('clientReady', () => {
@@ -104,6 +115,11 @@ async function handleInGameCommand(output) {
     const [_, channel, playerName, fullCmd] = chatMatch;
     const [command, ..._args] = fullCmd.trim().split(' ');
     
+    // DEDUPLICATION: Prevent double replies
+    const cmdKey = `${playerName}:${fullCmd}`;
+    if (inGameCommandCache.has(cmdKey) && Date.now() - inGameCommandCache.get(cmdKey) < 2000) return;
+    inGameCommandCache.set(cmdKey, Date.now());
+
     console.log(`[IN-GAME] Command: ${playerName} -> !${command}`);
 
     switch (command.toLowerCase()) {
@@ -125,44 +141,33 @@ async function handleInGameCommand(output) {
 
       case 'sync': {
         console.log(`[SYNC] In-game request from ${playerName}`);
-        
-        // 1. Try Gamedig first (Deep Scan)
-        const state = await Gamedig.query({
-          type: AUTO_ATTENDANCE_CONFIG.server.type,
-          host: AUTO_ATTENDANCE_CONFIG.server.host,
-          port: AUTO_ATTENDANCE_CONFIG.server.port,
-        }).catch(() => null);
-
-        let steamId = null;
-        let beGuid = null;
-
-        if (state) {
-          const pMatch = state.players.find(p => cleanName(p.name) === cleanName(playerName));
-          if (pMatch) {
-            const potentialIds = [pMatch.raw?.steamid, pMatch.raw?.guid, pMatch.raw?.id, pMatch.raw?.extra?.steamid];
-            steamId = potentialIds.find(id => id && /^\d{17}$/.test(id.toString()));
-            // Capture GUID if SteamID is missing
-            if (!steamId) beGuid = pMatch.raw?.guid || pMatch.raw?.id;
-          }
-        }
-
-        // 2. Try RCON as fallback
-        if (!steamId && !beGuid) {
-          const rconPlayers = await rcon.getPlayers();
-          const rMatch = rconPlayers.find(rp => cleanName(rp.name) === cleanName(playerName));
-          if (rMatch?.steamId) steamId = rMatch.steamId;
-          if (rMatch?.guid) beGuid = rMatch.beGuid;
-        }
+        const { steamId, beGuid } = await resolveIdentity(playerName);
         
         if (steamId || beGuid) {
-          const { data: personnel } = await ucApi.supabase.from('personnel').select('discord_id, display_name');
-          const matchedPerson = personnel?.find(p => cleanName(p.display_name).includes(cleanName(playerName)) || cleanName(playerName).includes(cleanName(p.display_name)));
+          const { data: personnel } = await ucApi.supabase
+            .from('personnel')
+            .select('discord_id, display_name, status');
+
+          const matchedPerson = personnel?.find(p => {
+            if (p.status && p.status !== 'ACTIVE') return false;
+            return cleanName(p.display_name).includes(cleanName(playerName)) || 
+                   cleanName(playerName).includes(cleanName(p.display_name));
+          });
 
           if (matchedPerson) {
-            if (steamId) await ucApi.saveSteamLink(matchedPerson.discord_id, steamId);
-            if (beGuid) await ucApi.saveGuid(matchedPerson.discord_id, beGuid);
+            let linkType = "";
+            if (steamId) {
+              await ucApi.saveSteamLink(matchedPerson.discord_id, steamId);
+              linkType = "SteamID64";
+              const calculatedGuid = calculateBeGuid(steamId);
+              if (calculatedGuid) await ucApi.saveGuid(matchedPerson.discord_id, calculatedGuid);
+            }
+            if (beGuid) {
+              await ucApi.saveGuid(matchedPerson.discord_id, beGuid);
+              linkType = linkType ? "SteamID & GUID" : "BattlEye GUID";
+            }
             
-            rcon.execute(`say -1 [BOT] Identity Sync Successful: Linked "${playerName}" to Discord.`);
+            rcon.execute(`say -1 [BOT] Sync Successful: Linked ${playerName} via ${linkType}.`);
           } else {
             rcon.execute(`say -1 [BOT] Sync Failed: Could not find Discord record matching "${playerName}".`);
           }
@@ -404,57 +409,44 @@ async function handleSync(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
   
   try {
-    const state = await Gamedig.query({
-      type: AUTO_ATTENDANCE_CONFIG.server.type,
-      host: AUTO_ATTENDANCE_CONFIG.server.host,
-      port: AUTO_ATTENDANCE_CONFIG.server.port,
-    });
+    const targetName = interaction.member.displayName;
+    const { steamId, beGuid } = await resolveIdentity(targetName);
 
-    const targetName = cleanName(interaction.member.displayName);
-    const player = state.players.find(p => 
-      cleanName(p.name).includes(targetName) || 
-      targetName.includes(cleanName(p.name))
-    );
-
-    if (!player) {
+    if (!steamId && !beGuid) {
       return interaction.editReply({ 
-        content: 'ERROR: I COULD NOT LOCATE YOU ON THE SERVER. ENSURE YOU ARE LOGGED IN AND YOUR DISCORD NAME MATCHES YOUR IN-GAME NAME.' 
+        content: `### ❌ SYNC FAILED
+I could not locate you on the game server as "**${targetName}**".
+        
+**Troubleshooting:**
+1. Ensure you are currently **online** on the game server.
+2. Ensure your in-game name matches your Discord nickname.
+3. If this continues to fail, find your **SteamID64** manually.
+
+**How to find your SteamID64:**
+1. Visit [SteamDB Calculator](https://steamdb.info/calculator/)
+2. Paste your profile URL and look for the **SteamID64**.
+3. Run: \`/steam steam_id:YOUR_ID\`` 
       });
     }
 
-    let steamId = player.raw?.steamid;
-
-    // FALLBACK: Try RCON if Gamedig failed to get SteamID
-    if (!steamId || !/^\d{17}$/.test(steamId)) {
-      console.log(`[SYNC] Gamedig failed SteamID for ${player.name}, attempting RCON fallback...`);
-      const rconPlayers = await rcon.getPlayers();
-      const rconMatch = rconPlayers.find(rp => 
-        cleanName(rp.name) === targetName || 
-        cleanName(rp.name) === cleanName(player.name)
-      );
-      
-      if (rconMatch?.steamId) {
-        steamId = rconMatch.steamId;
-        console.log(`[SYNC] RCON Success: Found SteamID ${steamId} for ${player.name}`);
-      }
+    let msg = `I have successfully identified you via the live server link.\n**PLAYER:** ${targetName}`;
+    
+    if (steamId) {
+      ucApi.saveSteamLink(interaction.user.id, steamId);
+      const calculatedGuid = calculateBeGuid(steamId);
+      if (calculatedGuid) await ucApi.saveGuid(interaction.user.id, calculatedGuid);
+      msg += `\n✅ **STEAMID:** \`${steamId}\``;
     }
 
-    if (!steamId || !/^\d{17}$/.test(steamId)) {
-      return interaction.editReply({ 
-        content: `I FOUND YOU AS **${player.name}**, BUT THE SERVER IS NOT REPORTING YOUR STEAMID64 (VIA QUERY OR RCON). PLEASE USE \`/steam\` TO LINK MANUALLY.` 
-      });
+    if (beGuid) {
+      await ucApi.saveGuid(interaction.user.id, beGuid);
+      msg += `\n✅ **GUID:** \`${beGuid.substring(0, 8)}...\``;
     }
-
-    ucApi.saveSteamLink(interaction.user.id, steamId);
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.INTEL_GREEN)
       .setTitle('IDENTITY SYNCHRONIZED')
-      .setDescription(`I have detected your Steam identity via the live server link.
-**PLAYER:** ${player.name}
-**STEAMID:** \`${steamId}\`
-
-Automated attendance tracking is now active for your account.`)
+      .setDescription(msg)
       .setFooter({ text: 'TRANSMISSION SEALED // 18 SIG REGT' });
 
     await interaction.editReply({ embeds: [embed] });
@@ -478,6 +470,13 @@ async function handleStatus(interaction) {
       port: AUTO_ATTENDANCE_CONFIG.server.port,
     });
 
+    // 1. Fetch all link data once for high performance matching
+    const steamLinks = await ucApi.getSteamLinks();
+    const guidLinks = await ucApi.getGuidLinks();
+    const ucLinks = await ucApi.getLinks(); // discord_id -> uc_profile_id
+    const ucProfiles = await ucApi.getProfiles();
+    const rconPlayers = await rcon.getPlayers();
+
     const embed = new EmbedBuilder()
       .setColor(COLORS.INTEL_GREEN)
       .setTitle(`SERVER STATUS: ${state.name}`)
@@ -488,27 +487,33 @@ async function handleStatus(interaction) {
       )
       .setTimestamp();
 
-    const steamLinks = ucApi.getSteamLinks();
-    const profiles = await ucApi.getProfiles();
-
     if (state.players.length > 0) {
       const playerLines = await Promise.all(state.players.map(async (p) => {
-        const steamId = p.raw?.steamid;
-        let ucProfile = null;
+        const cleanedPName = cleanName(p.name);
+        
+        // Find corresponding RCON entry for IDs
+        const rMatch = rconPlayers.find(rp => cleanName(rp.name) === cleanedPName);
+        const steamId = rMatch?.steamId || p.raw?.steamid;
+        const beGuid = rMatch?.guid;
 
-        if (steamId) {
-          const discordId = Object.keys(steamLinks).find(key => steamLinks[key] === steamId);
-          if (discordId) {
-            ucProfile = await ucApi.getProfileByDiscordMember({ id: discordId, displayName: p.name });
-          }
+        // Resolve Discord ID from ANY provided identifier
+        let discordId = null;
+        if (steamId) discordId = Object.keys(steamLinks).find(k => steamLinks[k] === steamId);
+        if (!discordId && beGuid) discordId = Object.keys(guidLinks).find(k => guidLinks[k] === beGuid);
+
+        let ucProfile = null;
+        if (discordId) {
+          const ucId = ucLinks[discordId];
+          if (ucId) ucProfile = ucProfiles.find(pr => pr.id.toString() === ucId.toString());
         }
 
+        // Name fallback (Active only)
         if (!ucProfile) {
-          // Fallback to name matching
-          ucProfile = profiles.find(pr => 
-            pr.alias.toLowerCase() === p.name.toLowerCase() ||
-            p.name.toLowerCase().includes(pr.alias.toLowerCase())
-          );
+          ucProfile = ucProfiles.find(pr => {
+            if (pr.status && pr.status?.toUpperCase() !== 'ACTIVE') return false;
+            const cleanAlias = cleanName(pr.alias);
+            return cleanAlias === cleanedPName || cleanedPName.includes(cleanAlias);
+          });
         }
 
         const statusLabel = ucProfile ? `[${ucProfile.rank?.abbreviation || 'RCT'}] ${ucProfile.alias}` : 'UNREGISTERED';
@@ -569,6 +574,10 @@ async function handleSteamLink(interaction) {
     }
 
     ucApi.saveSteamLink(interaction.user.id, steamId);
+    
+    // Auto-calculate and save BE GUID for in-game tracking
+    const beGuid = calculateBeGuid(steamId);
+    if (beGuid) await ucApi.saveGuid(interaction.user.id, beGuid);
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.INTEL_GREEN)
@@ -983,50 +992,16 @@ async function handleVerify(interaction) {
     });
   }
 
-  // 2. Steam Soft Link (Check Live Presence)
-  let steamLinkData = null;
+  // 2. Steam & GUID Soft Link (Check Live Presence)
+  const { steamId, beGuid } = await resolveIdentity(target.displayName);
   let presenceMsg = '';
   
-  try {
-    const state = await Gamedig.query({
-      type: AUTO_ATTENDANCE_CONFIG.server.type,
-      host: AUTO_ATTENDANCE_CONFIG.server.host,
-      port: AUTO_ATTENDANCE_CONFIG.server.port,
-    });
-    
-    // Check if user is already linked
-        const existingLinks = ucApi.getSteamLinks();
-        if (existingLinks[interaction.user.id]) {
-          presenceMsg = '\n✅ **STEAM LINK:** ALREADY ACTIVE';
-        } else {
-          // Find on server
-          const targetName = cleanName(interaction.member.displayName);
-          const player = state.players.find(p => 
-            cleanName(p.name).includes(targetName) || 
-            targetName.includes(cleanName(p.name))
-          );
-          
-          if (player?.raw?.steamid) {
-            steamLinkData = player.raw.steamid;
-            presenceMsg = `\n✅ **STEAM LINK:** DETECTED ON SERVER AS **${player.name}**`;
-          } else if (player) {
-    
-              // RCON Fallback for Verify
-              const rconPlayers = await rcon.getPlayers();
-              const rconMatch = rconPlayers.find(rp => cleanName(rp.name) === targetName);
-              if (rconMatch?.steamId) {
-                steamLinkData = rconMatch.steamId;
-                presenceMsg = `\n✅ **STEAM LINK:** DETECTED VIA RCON AS **${player.name}**`;
-              } else {
-                presenceMsg = '\n⚠️ **STEAM LINK:** DETECTED BUT NO ID REPORTED (Use /steam manually)';
-              }
-            }
-       else {
-        presenceMsg = '\n⚠️ **STEAM LINK:** NOT DETECTED ON SERVER (Connect to auto-link)';
-      }
-    }
-  } catch (_e) {
-    presenceMsg = '\n⚠️ **STEAM LINK:** SERVER OFFLINE';
+  if (steamId || beGuid) {
+    presenceMsg = `\n✅ **STEAM LINK:** DETECTED ON SERVER AS **${target.displayName}**`;
+    if (steamId) presenceMsg += `\n(SteamID: \`${steamId}\`)`;
+    if (beGuid && !steamId) presenceMsg += `\n(BattlEye GUID: \`${beGuid.substring(0,8)}...\`)`;
+  } else {
+    presenceMsg = '\n⚠️ **STEAM LINK:** NOT DETECTED ON SERVER (Connect to auto-link)';
   }
 
   const deployments = await getDeploymentCount(profile.id);
@@ -1042,14 +1017,14 @@ async function handleVerify(interaction) {
     .setColor(COLORS.TAC_GRAY)
     .setTitle('IDENTITY VERIFICATION TERMINAL')
     .setDescription(
-      `>>> **PERSONNEL RECORD FOUND.**\nReview the ID card below. Confirm if this is your official file.\n${presenceMsg}`
+      `>>> **PERSONNEL RECORD FOUND.**\nReview the ID card below. Confirm if this is your official file.\n\n**STATUS:** \`${profile.status || 'ACTIVE'}\`${presenceMsg}`
     )
     .setImage('attachment://idcard.png')
     .setFooter({ text: 'UKSF SECURE LINK // 18 SIG REGT' });
 
-  // Store data in customId for the button handler (UC ID + Steam ID)
-  // Format: verify_confirm:UC_ID:STEAM_ID
-  const confirmId = `verify_confirm:${profile.id}${steamLinkData ? `:${steamLinkData}` : ''}`;
+  // Store data in customId for the button handler
+  // Format: verify_confirm:UC_ID:STEAM_ID:BE_GUID
+  const confirmId = `verify_confirm:${profile.id}:${steamId || 'NONE'}:${beGuid || 'NONE'}`;
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -1121,14 +1096,20 @@ async function handleButton(interaction) {
 
   if (action === 'verify_confirm') {
     const ucProfileId = id;
-    const steamId = value; // Might be undefined
+    const steamId = parts[2] !== 'NONE' ? parts[2] : null;
+    const beGuid = parts[3] !== 'NONE' ? parts[3] : null;
 
-    ucApi.saveLink(interaction.user.id, ucProfileId);
+    await ucApi.saveLink(interaction.user.id, ucProfileId);
     let msg = '✅ **UNIT COMMANDER LINK ESTABLISHED.**';
 
     if (steamId) {
-      ucApi.saveSteamLink(interaction.user.id, steamId);
+      await ucApi.saveSteamLink(interaction.user.id, steamId);
       msg += `\n✅ **STEAM LINK ESTABLISHED** (ID: \`${steamId}\`)`;
+    }
+
+    if (beGuid) {
+      await ucApi.saveGuid(interaction.user.id, beGuid);
+      msg += `\n✅ **GUID LINK ESTABLISHED** (ID: \`${beGuid.substring(0, 8)}...\`)`;
     }
 
     return interaction.update({
@@ -1438,6 +1419,65 @@ function getAllFiles(dirPath, arrayOfFiles) {
     }
   });
   return arrayOfFiles;
+}
+
+/**
+ * UNIFIED IDENTITY RESOLVER
+ * Performs exhaustive lookup across all providers to find SteamID and/or GUID.
+ */
+async function resolveIdentity(playerName) {
+  let steamId = null;
+  let beGuid = null;
+  const cleanedTarget = cleanName(playerName);
+
+  // 1. Gamedig Deep Scan
+  try {
+    const state = await Gamedig.query({
+      type: AUTO_ATTENDANCE_CONFIG.server.type,
+      host: AUTO_ATTENDANCE_CONFIG.server.host,
+      port: AUTO_ATTENDANCE_CONFIG.server.port,
+    });
+    
+    const pMatch = state.players.find(p => cleanName(p.name) === cleanedTarget);
+    if (pMatch) {
+      const potentials = [pMatch.raw?.steamid, pMatch.raw?.guid, pMatch.raw?.id, pMatch.raw?.extra?.steamid];
+      steamId = potentials.find(id => id && /^\d{17}$/.test(id.toString()));
+      beGuid = pMatch.raw?.guid || pMatch.raw?.id;
+    }
+  } catch (_e) {}
+
+  // 2. RCON Fallback
+  if (!steamId || !beGuid) {
+    const rconPlayers = await rcon.getPlayers();
+    const rMatch = rconPlayers.find(rp => cleanName(rp.name) === cleanedTarget);
+    if (rMatch) {
+      if (!steamId) steamId = rMatch.steamId;
+      if (!beGuid) beGuid = rMatch.guid;
+    }
+  }
+
+  // 3. Battlemetrics Bridge (ID Translation)
+  if (!steamId && process.env.BATTLEMETRICS_API_KEY) {
+    try {
+      // Search by Name
+      const bmSearch = await axios.get(
+        `https://api.battlemetrics.com/players?filter[search]=${encodeURIComponent(playerName)}&include=identifier`,
+        { headers: { 'Authorization': `Bearer ${process.env.BATTLEMETRICS_API_KEY}` } }
+      );
+      
+      if (bmSearch.data?.included) {
+        const sidObj = bmSearch.data.included.find(i => i.attributes?.type === 'steamID');
+        if (sidObj) steamId = sidObj.attributes.identifier;
+      }
+    } catch (_e) {}
+  }
+
+  // 4. Cryptographic Calculation (SteamID -> GUID)
+  if (steamId && !beGuid) {
+    beGuid = calculateBeGuid(steamId);
+  }
+
+  return { steamId, beGuid };
 }
 
 /**
