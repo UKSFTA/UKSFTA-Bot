@@ -60,7 +60,7 @@ const activeDossiers = new Collection();
 const sessionTracker = new Map(); // steamId -> { firstSeen: Date, lastSeen: Date, totalMinutes: 0 }
 let currentMission = { id: null, name: 'BOOTING', map: 'UNKNOWN', players: 0 };
 
-client.once('ready', () => {
+client.once('clientReady', () => {
   console.log(`[SYSTEM] TERMINAL ONLINE. LOGGED AS ${client.user.tag}`);
   client.user.setPresence({
     activities: [

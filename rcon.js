@@ -77,7 +77,7 @@ class RconManager {
     if (response.startsWith('ERROR')) return [];
 
     try {
-      console.log(`[RCON] Raw JSON: ${response}`);
+      // console.log(`[RCON] Raw JSON: ${response}`);
       const data = JSON.parse(response);
 
       // bercon-cli JSON format for players usually looks like:
