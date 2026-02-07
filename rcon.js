@@ -1,6 +1,7 @@
-const { exec, spawn } = require('node:child_process');
+const { exec } = require('node:child_process');
 const util = require('node:util');
 const execPromise = util.promisify(exec);
+const BattleNode = require('battle-node');
 require('dotenv').config();
 
 class RconManager {
@@ -8,11 +9,20 @@ class RconManager {
     this.host = process.env.STEAM_SERVER_IP || '127.0.0.1';
     this.port = parseInt(process.env.RCON_PORT, 10) || 2302;
     this.password = process.env.RCON_PASSWORD;
-    this.listenerProcess = null;
+    
+    // Persistent Listener Client Configuration
+    const config = {
+      ip: this.host,
+      port: this.port,
+      rconPassword: this.password
+    };
+
+    this.bNode = new BattleNode(config);
+    this.isConnected = false;
   }
 
   /**
-   * Executes a command via bercon-cli and returns the raw output or parsed JSON.
+   * Executes a command via bercon-cli (for structured JSON output)
    */
   async execute(command, format = 'raw') {
     if (!this.password) return 'ERROR: NO PASSWORD';
@@ -26,106 +36,61 @@ class RconManager {
   }
 
   /**
-   * Starts a persistent listener that monitors server console/chat.
-   * Emits events when specific patterns are found.
-   */
-  createListener(callback) {
-    if (this.listenerProcess) return;
-
-    console.log(
-      `[RCON] Starting persistent listener on ${this.host}:${this.port}...`,
-    );
-
-    // -x -1 tells bercon-cli to stay connected and repeat (effectively tailing the logs)
-    // We use "players" as a dummy command to keep the connection open,
-    // but BattlEye will stream chat/logs regardless.
-    this.listenerProcess = spawn('bercon-cli', [
-      `--ip=${this.host}`,
-      `--port=${this.port}`,
-      `--password=${this.password}`,
-      '--format=raw',
-      '--repeat=-1',
-      '--keepalive=30',
-      '', // Empty command just to listen
-    ]);
-
-    this.listenerProcess.stdout.on('data', (data) => {
-      const output = data.toString();
-      // BattlEye Chat Format: (Side) Name: Message
-      // Example: (Global) M. Barker: !verify
-      callback(output);
-    });
-
-    this.listenerProcess.on('error', (err) => {
-      console.error('[RCON] Listener Process Error:', err.message);
-    });
-
-    this.listenerProcess.on('close', (code) => {
-      console.log(
-        `[RCON] Listener Process closed with code ${code}. Restarting in 10s...`,
-      );
-      this.listenerProcess = null;
-      setTimeout(() => this.createListener(callback), 10000);
-    });
-  }
-
-  /**
-   * Fetches a list of players using bercon-cli's JSON format.
+   * Fetches structured player list via bercon-cli JSON
    */
   async getPlayers() {
     const response = await this.execute('players', 'json');
     if (response.startsWith('ERROR')) return [];
 
     try {
-      // console.log(`[RCON] Raw JSON: ${response}`);
       const data = JSON.parse(response);
-
-      // bercon-cli JSON format for players usually looks like:
-      // [
-      //   { "id": 0, "name": "Matt", "player_id": "765...", "ip": "...", "ping": 45, "status": "OK" },
-      //   ...
-      // ]
-      // Note: "player_id" is often the SteamID64 or BE GUID depending on server config.
-
       if (!Array.isArray(data)) return [];
 
-      return data.map((p) => {
+      return data.map(p => {
         const id = p.player_id || p.id_string || p.guid || '';
         return {
           id: id,
           steamId: /^\d{17}$/.test(id) ? id : null,
           guid: id.length === 32 ? id : null,
-          name: p.name || 'Unknown',
+          name: p.name || 'Unknown'
         };
       });
     } catch (e) {
-      console.error('[RCON] JSON Parse Error:', e.message);
-      // Fallback to raw parsing if JSON fails for some reason
-      return this.parseRawPlayers(response);
+      return [];
     }
   }
 
   /**
-   * Fallback parser for raw 'players' output
+   * Starts a persistent UDP listener for real-time chat and logs
    */
-  parseRawPlayers(raw) {
-    const players = [];
-    const lines = raw.split('\n');
-    for (const line of lines) {
-      const match = line.match(
-        /^\d+\s+[\d.]+:?\d*\s+\d+\s+([a-f0-9]+)\(OK\)\s+(.+)$/i,
-      );
-      if (match) {
-        const id = match[1];
-        players.push({
-          id: id,
-          steamId: /^\d{17}$/.test(id) ? id : null,
-          guid: id.length === 32 ? id : null,
-          name: match[2].trim(),
-        });
+  createListener(callback) {
+    if (this.isConnected) return;
+
+    console.log(`[RCON] Initializing persistent stream on ${this.host}:${this.port}...`);
+
+    this.bNode.login();
+
+    this.bNode.on('login', (err, success) => {
+      if (err || !success) {
+        console.error('[RCON] Stream login failed. Retrying in 10s...');
+        this.isConnected = false;
+        setTimeout(() => this.createListener(callback), 10000);
+        return;
       }
-    }
-    return players;
+      this.isConnected = true;
+      console.log('[RCON] Persistent stream established.');
+    });
+
+    // Capture all console output (including chat)
+    this.bNode.on('message', (message) => {
+      callback(message);
+    });
+
+    this.bNode.on('disconnected', () => {
+      console.warn('[RCON] Stream disconnected. Reconnecting...');
+      this.isConnected = false;
+      setTimeout(() => this.createListener(callback), 5000);
+    });
   }
 }
 
