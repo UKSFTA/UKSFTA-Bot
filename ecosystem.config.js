@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'uksf-bot',
-      script: 'index.js',
+      script: 'src/bot.js',
       watch: false,
       env: {
         NODE_ENV: 'production',

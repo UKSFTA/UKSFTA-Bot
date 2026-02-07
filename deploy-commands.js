@@ -1,313 +1,123 @@
-const { REST, Routes } = require('discord.js');
+const axios = require('axios');
 require('dotenv').config();
 
 const commands = [
   {
     name: 'dossier',
     description: 'Retrieve tactical service record for a member.',
-    options: [
-      {
-        name: 'member',
-        type: 6, // USER
-        description: 'The member to investigate',
-        required: true,
-      },
-    ],
-  },
-  {
-    name: 'op',
-    description: 'Operational orders and management.',
-    options: [
-      {
-        name: 'create',
-        type: 1, // SUB_COMMAND
-        description: 'Create a new Operation Order (OPORD).',
-        options: [
-          {
-            name: 'name',
-            type: 3,
-            description: 'Operation Name (Manual override)',
-            required: false,
-          },
-          {
-            name: 'date',
-            type: 3,
-            description: 'DD/MM/YYYY HH:MM (Manual override)',
-            required: false,
-          },
-          {
-            name: 'type',
-            type: 3,
-            description: 'Campaign / One-off / Training',
-            required: false,
-          },
-          {
-            name: 'uc_event',
-            type: 3,
-            description: 'Link to a Unit Commander Event',
-            required: false,
-            autocomplete: true,
-          },
-        ],
-      },
-    ],
-  },
-  {
-    name: 'promotion',
-    description: 'Process a rank promotion or demotion.',
-    options: [
-      {
-        name: 'member',
-        type: 6,
-        description: 'The member to update',
-        required: true,
-      },
-      {
-        name: 'rank',
-        type: 3,
-        description: 'New rank (Manual or Autocomplete)',
-        required: true,
-        autocomplete: true,
-      },
-    ],
-  },
-  {
-    name: 'award',
-    description: 'Grant a tactical award or commendation to a member.',
-    options: [
-      {
-        name: 'member',
-        type: 6,
-        description: 'The recipient',
-        required: true,
-      },
-      {
-        name: 'medal',
-        type: 3,
-        description: 'Award Title (Manual or Autocomplete)',
-        required: true,
-        autocomplete: true,
-      },
-      {
-        name: 'citation',
-        type: 3,
-        description: 'The reason for the award',
-        required: true,
-      },
-    ],
-  },
-  {
-    name: 'attendance',
-    description: 'Log attendance for a completed operation.',
-    options: [
-      {
-        name: 'op_id',
-        type: 3,
-        description: 'The identifier of the operation',
-        required: true,
-      },
-      {
-        name: 'action',
-        type: 3,
-        description: 'Log or Export',
-        required: true,
-        choices: [
-          { name: 'Log Present Members', value: 'log' },
-          { name: 'Export to Intel System', value: 'export' },
-        ],
-      },
-    ],
-  },
-  {
-    name: 'link',
-    description: 'Link a Discord member to their Unit Commander profile.',
-    options: [
-      {
-        name: 'member',
-        type: 6,
-        description: 'The Discord member',
-        required: true,
-      },
-      {
-        name: 'uc_id',
-        type: 3,
-        description: 'The Unit Commander Profile ID (Found in UC URL)',
-        required: true,
-      },
-    ],
-  },
-  {
-    name: 'steam',
-    description: 'Link your Steam ID for automated attendance tracking.',
-    options: [
-      {
-        name: 'steam_id',
-        type: 3,
-        description:
-          'Your SteamID64. Leave empty to auto-detect from active server session.',
-        required: false,
-      },
-    ],
-  },
-  {
-    name: 'verify',
-    description:
-      'Attempt to automatically link your Discord account to Unit Commander.',
-  },
-  {
-    name: 'unlink',
-    description: 'Remove the link between a Discord member and Unit Commander.',
-    options: [
-      {
-        name: 'member',
-        type: 6,
-        description: 'The member to unlink (Admin only)',
-        required: false,
-      },
-    ],
-  },
-  {
-    name: 'rcon',
-    description: 'Execute an RCON command on the game server.',
-    default_member_permissions: '8', // ADMINISTRATOR
-    options: [
-      {
-        name: 'command',
-        type: 3,
-        description: 'The command to execute (e.g., "players", "kick 0")',
-        required: true,
-      },
-    ],
-  },
-  {
-    name: 'status',
-    description: 'Get the real-time status of the UKSF game server.',
-  },
-  {
-    name: 'mission',
-    description: 'View the unit operational history and mission logs.',
-    options: [
-      {
-        name: 'recent',
-        type: 1, // SUB_COMMAND
-        description: 'Show the last 5 missions completed.'
-      }
-    ]
+    options: [{ name: 'member', type: 6, description: 'The member to investigate', required: true }]
   },
   {
     name: 'personnel',
     description: 'Manage unit personnel records.',
-    default_member_permissions: '8', // ADMINISTRATOR
+    default_member_permissions: '8',
     options: [
       {
         name: 'promote',
-        type: 1, // SUB_COMMAND
+        type: 1,
         description: 'Promote or demote a member.',
         options: [
-          {
-            name: 'member',
-            type: 6,
-            description: 'The member to update',
-            required: true,
-          },
-          {
-            name: 'rank',
-            type: 3,
-            description: 'New rank abbreviation (e.g. Sgt)',
-            required: true,
-            autocomplete: true,
-          },
-        ],
+          { name: 'member', type: 6, description: 'The member to update', required: true },
+          { name: 'rank', type: 3, description: 'New rank abbreviation', required: true, autocomplete: true }
+        ]
       },
       {
         name: 'discharge',
-        type: 1, // SUB_COMMAND
+        type: 1,
         description: 'Discharge a member from service.',
         options: [
-          {
-            name: 'member',
-            type: 6,
-            description: 'The member to discharge',
-            required: true,
-          },
-          {
-            name: 'type',
-            type: 3,
-            description: 'Discharge type',
-            required: true,
-            choices: [
-              { name: 'Honorable', value: 'HONORABLE' },
-              { name: 'Dishonorable', value: 'DISHONORABLE' },
-              { name: 'Medical', value: 'MEDICAL' },
-              { name: 'Administrative (AWOL)', value: 'AWOL' },
-            ],
-          },
-          {
-            name: 'reason',
-            type: 3,
-            description: 'Official reason for discharge',
-            required: true,
-          },
-        ],
+          { name: 'member', type: 6, description: 'The member to discharge', required: true },
+          { name: 'type', type: 3, description: 'Discharge type', required: true, choices: [
+            { name: 'Honorable', value: 'HONORABLE' }, { name: 'Dishonorable', value: 'DISHONORABLE' },
+            { name: 'Medical', value: 'MEDICAL' }, { name: 'Administrative', value: 'AWOL' }
+          ]},
+          { name: 'reason', type: 3, description: 'Reason', required: true }
+        ]
       },
       {
         name: 'info',
         type: 1,
-        description: 'View detailed database record for a member.',
+        description: 'View detailed database record.',
+        options: [{ name: 'member', type: 6, description: 'The member', required: true }]
+      }
+    ]
+  },
+  {
+    name: 'rcon',
+    description: 'Game server administrative tools.',
+    default_member_permissions: '8',
+    options: [
+      {
+        name: 'cmd',
+        type: 1,
+        description: 'Execute common RCON commands.',
         options: [
-          {
-            name: 'member',
-            type: 6,
-            description: 'The member to investigate',
-            required: true,
-          },
-        ],
+          { name: 'action', type: 3, description: 'The action to perform', required: true, choices: [
+            { name: 'List Players', value: 'players' }, { name: 'List Admins', value: 'admins' },
+            { name: 'Server FPS', value: 'fps' }, { name: 'Lock Server', value: 'lock' },
+            { name: 'Unlock Server', value: 'unlock' }, { name: 'List Bans', value: 'bans' }
+          ]}
+        ]
       },
-    ],
+      {
+        name: 'player',
+        type: 1,
+        description: 'Management actions against specific players.',
+        options: [
+          { name: 'action', type: 3, description: 'Action', required: true, choices: [{ name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' }] },
+          { name: 'target', type: 3, description: 'The player', required: true, autocomplete: true },
+          { name: 'reason', type: 3, description: 'Reason', required: false },
+          { name: 'duration', type: 4, description: 'Ban duration (mins)', required: false }
+        ]
+      },
+      {
+        name: 'say',
+        type: 1,
+        description: 'Broadcast a global message.',
+        options: [{ name: 'message', type: 3, description: 'Message text', required: true }]
+      },
+      {
+        name: 'raw',
+        type: 1,
+        description: 'Execute a raw string command.',
+        options: [{ name: 'command', type: 3, description: 'The raw command', required: true }]
+      }
+    ]
   },
-  {
-    name: 'sync',
-    description:
-      'Automatically link your SteamID by detecting your current game session.',
-  },
-  {
-    name: 'help',
-    description: 'Display a list of all available tactical commands.',
-  },
+  { name: 'status', description: 'Real-time game server status.' },
+  { name: 'mission', description: 'Operational history.', options: [{ name: 'recent', type: 1, description: 'Last 5 missions' }] },
+  { name: 'steam', description: 'Link SteamID.', options: [{ name: 'steam_id', type: 3, description: 'SteamID64', required: false }] },
+  { name: 'verify', description: 'Unified identity setup.' },
+  { name: 'sync', description: 'Auto-detect Steam link.' },
+  { name: 'help', description: 'Command reference.' }
 ];
 
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
-(async () => {
+async function deploy() {
+  console.log(`[SIGNALS] TARGET GUILD: ${process.env.DISCORD_GUILD_ID}`);
+  const url = `https://discord.com/api/v10/applications/${process.env.CLIENT_ID}/guilds/${process.env.DISCORD_GUILD_ID}/commands`;
+  
   try {
-    console.log(
-      `[SIGNALS] INITIALIZING DEPLOYMENT TO GUILD: ${process.env.DISCORD_GUILD_ID}`,
-    );
-    console.log(`[SIGNALS] CLIENT IDENTIFIER: ${process.env.CLIENT_ID}`);
-
-    // First, clear existing commands to force a fresh sync
-    await rest.put(
-      Routes.applicationGuildCommands(
-        process.env.CLIENT_ID,
-        process.env.DISCORD_GUILD_ID,
-      ),
-      { body: [] },
-    );
-    console.log('[SIGNALS] PREVIOUS COMMAND CACHE CLEARED.');
-
-    // Now deploy the new set
-    const data = await rest.put(
-      Routes.applicationGuildCommands(
-        process.env.CLIENT_ID,
-        process.env.DISCORD_GUILD_ID,
-      ),
-      { body: commands },
-    );
-
-    console.log(
-      `[SIGNALS] SUCCESS: ${data.length} COMMANDS SYNCHRONIZED WITH DISCORD.`,
-    );
+    const response = await axios.put(url, commands, {
+      headers: {
+        Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000 // 10s timeout to prevent hanging
+    });
+    console.log(`[SIGNALS] SUCCESS: ${response.data.length} COMMANDS LIVE.`);
+    process.exit(0);
   } catch (error) {
-    console.error('[SIGNALS] DEPLOYMENT CRITICAL FAILURE:', error);
+    if (error.response?.status === 429) {
+      console.error(`[SIGNALS] RATE LIMITED: Discord is blocking updates for another ${error.response.data.retry_after} seconds.`);
+    } else if (error.response?.data?.code === 30034) {
+      console.error('[SIGNALS] QUOTA EXCEEDED: You have hit the Discord limit of 200 command updates today.');
+      console.error('This limit will reset in approximately 24 hours.');
+    } else {
+      console.error('[SIGNALS] DEPLOYMENT FAILED:');
+      console.error(error.response?.data || error.message);
+    }
+    process.exit(1);
   }
-})();
+}
+
+deploy();

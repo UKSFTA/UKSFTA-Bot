@@ -1,4 +1,4 @@
-const ucApi = require('./uc_api');
+const ucApi = require('../src/modules/uc_api');
 require('dotenv').config();
 
 async function migrate() {
