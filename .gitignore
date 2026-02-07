@@ -6,6 +6,5 @@ build/
 *.log
 .DS_Store
 .npm
-/docs
 # Ignore specific data files that should be in the cloud
 data/
