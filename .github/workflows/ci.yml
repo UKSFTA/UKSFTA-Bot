@@ -13,17 +13,20 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Use Node.js
+    - name: Setup Node.js v20
       uses: actions/setup-node@v4
       with:
-        node-version: '20.x'
+        node-version: '20'
         cache: 'npm'
 
-    - name: Install dependencies
+    - name: Install Dependencies
       run: npm ci
 
-    - name: Lint check
+    - name: Static Analysis (Linter)
       run: npm run lint
 
-    - name: Run tests
+    - name: Security Audit
+      run: npm run security-scan
+
+    - name: Execute Unit Tests
       run: npm run test
