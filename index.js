@@ -110,6 +110,7 @@ async function handleInGameCommand(output) {
       case 'verify':
         rcon.execute(`say -1 [BOT] Hello ${playerName}. To verify your identity, use the /verify command in Discord.`);
         break;
+      
       case 'status': {
         const state = await Gamedig.query({
           type: AUTO_ATTENDANCE_CONFIG.server.type,
@@ -121,9 +122,50 @@ async function handleInGameCommand(output) {
         }
         break;
       }
-      case 'sync':
-        rcon.execute(`say -1 [BOT] ${playerName}, syncing... Check Discord for confirmation.`);
+
+      case 'sync': {
+        console.log(`[SYNC] In-game request from ${playerName}`);
+        
+        // 1. Try Gamedig first (usually reliable for SteamID64)
+        const state = await Gamedig.query({
+          type: AUTO_ATTENDANCE_CONFIG.server.type,
+          host: AUTO_ATTENDANCE_CONFIG.server.host,
+          port: AUTO_ATTENDANCE_CONFIG.server.port,
+        }).catch(() => null);
+
+        let steamId = null;
+        if (state) {
+          const pMatch = state.players.find(p => cleanName(p.name) === cleanName(playerName));
+          if (pMatch?.raw?.steamid) steamId = pMatch.raw.steamid;
+        }
+
+        // 2. Try RCON as fallback
+        if (!steamId) {
+          const rconPlayers = await rcon.getPlayers();
+          const rMatch = rconPlayers.find(rp => cleanName(rp.name) === cleanName(playerName));
+          if (rMatch?.steamId) steamId = rMatch.steamId;
+        }
+        
+        if (steamId) {
+          // Attempt to find existing personnel record by nickname
+          const { data: personnel } = await ucApi.supabase
+            .from('personnel')
+            .select('discord_id, display_name')
+            .ilike('display_name', `%${cleanName(playerName)}%`)
+            .limit(1)
+            .single();
+
+          if (personnel) {
+            await ucApi.saveSteamLink(personnel.discord_id, steamId);
+            rcon.execute(`say -1 [BOT] Identity Sync Successful: Linked "${playerName}" to Discord.`);
+          } else {
+            rcon.execute(`say -1 [BOT] Sync Failed: Could not find Discord record matching "${playerName}".`);
+          }
+        } else {
+          rcon.execute(`say -1 [BOT] Sync Failed: Server did not report your SteamID64. Use Discord /steam manually.`);
+        }
         break;
+      }
     }
   }
 
@@ -285,6 +327,8 @@ async function handleMission(interaction) {
 
   await interaction.editReply({ embeds: [embed] });
 }
+
+async function handleChatInput(interaction) {
   const { commandName } = interaction;
 
   switch (commandName) {
@@ -310,40 +354,6 @@ async function handleMission(interaction) {
       return handleAttendance(interaction);
     case 'op':
       return handleOp(interaction);
-    case 'rcon':
-      return handleRcon(interaction);
-    case 'status':
-      return handleStatus(interaction);
-    case 'sync':
-      return handleSync(interaction);
-    default:
-      console.warn(`[SYSTEM] UNKNOWN CMD: ${commandName}`);
-  }
-}
-
-  switch (commandName) {
-    case 'dossier':
-      return startDossier(interaction);
-    case 'verify':
-      return handleVerify(interaction);
-    case 'steam':
-      return handleSteamLink(interaction);
-    case 'sop':
-      return handleSOPSearch(interaction);
-    case 'link':
-      return handleLink(interaction);
-    case 'unlink':
-      return handleUnlink(interaction);
-    case 'award':
-      return handleAward(interaction);
-    case 'promotion':
-      return handlePromotion(interaction);
-    case 'attendance':
-      return handleAttendance(interaction);
-    case 'op':
-      return handleOp(interaction);
-    case 'personnel':
-      return handlePersonnel(interaction);
     case 'mission':
       return handleMission(interaction);
     case 'rcon':
