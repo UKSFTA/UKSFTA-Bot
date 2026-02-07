@@ -1,11 +1,14 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const fs = require('node:fs');
-const path = require('node:path');
+const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.DISCORD_GUILD_ID;
-const ROSTER_PATH = path.join(__dirname, '..', 'data', 'roster.json');
+
+// Supabase Configuration
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Rank mapping: Role Name -> Display Rank
 const RANK_MAP = {
@@ -35,11 +38,7 @@ async function syncRoster() {
   }
 
   const client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMembers,
-      GatewayIntentBits.GuildPresences,
-    ],
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   });
 
   try {
@@ -47,7 +46,9 @@ async function syncRoster() {
     const guild = await client.guilds.fetch(GUILD_ID);
     const members = await guild.members.fetch();
 
-    console.log(`Successfully fetched ${members.size} members from Discord.`);
+    console.log(
+      `[SYNC] Successfully fetched ${members.size} members from Discord.`,
+    );
 
     const personnel = [];
 
@@ -64,40 +65,49 @@ async function syncRoster() {
 
       for (const roleName of roles) {
         const orderIndex = rankOrder.indexOf(roleName);
-        // Lower index = Higher rank (e.g., General is 0)
         if (orderIndex !== -1 && orderIndex < rankPriority) {
           rank = RANK_MAP[roleName];
           rankPriority = orderIndex;
         }
       }
 
-      // Extract callsign from nickname if present (e.g., "[C1-1] Matt")
       const callsignMatch = member.displayName.match(/\[(.*?)\]/);
       const callsign = callsignMatch ? callsignMatch[1] : 'N/A';
 
       personnel.push({
-        id: member.id,
+        discord_id: member.id,
         username: member.user.username,
-        displayName: member.displayName,
+        display_name: member.displayName,
         rank: rank,
-        rankPriority: rankPriority,
+        rank_priority: rankPriority,
         callsign: callsign,
-        joinedAt: member.joinedAt.toISOString().split('T')[0],
+        joined_at: member.joinedAt
+          ? member.joinedAt.toISOString().split('T')[0]
+          : null,
+        updated_at: new Date().toISOString(),
       });
     });
 
-    // Sort by rank priority (Higher rank = lower priority number)
-    personnel.sort((a, b) => a.rankPriority - b.rankPriority);
+    console.log(
+      `[SUPABASE] Upserting ${personnel.length} records to personnel...`,
+    );
 
-    // Read current roster to preserve branches metadata
-    const currentRoster = JSON.parse(fs.readFileSync(ROSTER_PATH, 'utf8'));
-    currentRoster.personnel = personnel;
-    currentRoster.lastUpdated = new Date().toISOString();
+    // We do this in batches to avoid payload limits if the unit is large
+    const batchSize = 100;
+    for (let i = 0; i < personnel.length; i += batchSize) {
+      const batch = personnel.slice(i, i + batchSize);
+      const { error } = await supabase
+        .from('personnel')
+        .upsert(batch, { onConflict: 'discord_id' });
 
-    fs.writeFileSync(ROSTER_PATH, JSON.stringify(currentRoster, null, 2));
-    console.log(`Roster synced successfully to ${ROSTER_PATH}`);
+      if (error) {
+        console.error(`[SUPABASE] Batch error: ${error.message}`);
+      }
+    }
+
+    console.log('[SYNC] Roster sync to Supabase complete.');
   } catch (error) {
-    console.error('Sync failed:', error);
+    console.error('[SYNC] Critical Failure:', error.message);
   } finally {
     client.destroy();
   }

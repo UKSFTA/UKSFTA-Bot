@@ -32,10 +32,12 @@ class RconManager {
   createListener(callback) {
     if (this.listenerProcess) return;
 
-    console.log(`[RCON] Starting persistent listener on ${this.host}:${this.port}...`);
-    
+    console.log(
+      `[RCON] Starting persistent listener on ${this.host}:${this.port}...`,
+    );
+
     // -x -1 tells bercon-cli to stay connected and repeat (effectively tailing the logs)
-    // We use "players" as a dummy command to keep the connection open, 
+    // We use "players" as a dummy command to keep the connection open,
     // but BattlEye will stream chat/logs regardless.
     this.listenerProcess = spawn('bercon-cli', [
       `--ip=${this.host}`,
@@ -44,7 +46,7 @@ class RconManager {
       '--format=raw',
       '--repeat=-1',
       '--keepalive=30',
-      '' // Empty command just to listen
+      '', // Empty command just to listen
     ]);
 
     this.listenerProcess.stdout.on('data', (data) => {
@@ -59,7 +61,9 @@ class RconManager {
     });
 
     this.listenerProcess.on('close', (code) => {
-      console.log(`[RCON] Listener Process closed with code ${code}. Restarting in 10s...`);
+      console.log(
+        `[RCON] Listener Process closed with code ${code}. Restarting in 10s...`,
+      );
       this.listenerProcess = null;
       setTimeout(() => this.createListener(callback), 10000);
     });
@@ -75,23 +79,23 @@ class RconManager {
     try {
       console.log(`[RCON] Raw JSON: ${response}`);
       const data = JSON.parse(response);
-      
+
       // bercon-cli JSON format for players usually looks like:
       // [
       //   { "id": 0, "name": "Matt", "player_id": "765...", "ip": "...", "ping": 45, "status": "OK" },
       //   ...
       // ]
       // Note: "player_id" is often the SteamID64 or BE GUID depending on server config.
-      
+
       if (!Array.isArray(data)) return [];
 
-      return data.map(p => {
+      return data.map((p) => {
         const id = p.player_id || p.id_string || p.guid || '';
         return {
           id: id,
           steamId: /^\d{17}$/.test(id) ? id : null,
           guid: id.length === 32 ? id : null,
-          name: p.name || 'Unknown'
+          name: p.name || 'Unknown',
         };
       });
     } catch (e) {
@@ -108,14 +112,16 @@ class RconManager {
     const players = [];
     const lines = raw.split('\n');
     for (const line of lines) {
-      const match = line.match(/^\d+\s+[\d.]+:?\d*\s+\d+\s+([a-f0-9]+)\(OK\)\s+(.+)$/i);
+      const match = line.match(
+        /^\d+\s+[\d.]+:?\d*\s+\d+\s+([a-f0-9]+)\(OK\)\s+(.+)$/i,
+      );
       if (match) {
         const id = match[1];
         players.push({
           id: id,
           steamId: /^\d{17}$/.test(id) ? id : null,
           guid: id.length === 32 ? id : null,
-          name: match[2].trim()
+          name: match[2].trim(),
         });
       }
     }

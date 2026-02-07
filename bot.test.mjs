@@ -12,9 +12,9 @@ vi.mock('./uc_api', () => ({
   default: {
     getProfiles: vi.fn(() => [
       { id: 1, alias: 'M. Barker', status: 'ACTIVE' },
-      { id: 2, alias: 'J. Doe', status: 'ACTIVE' }
-    ])
-  }
+      { id: 2, alias: 'J. Doe', status: 'ACTIVE' },
+    ]),
+  },
 }));
 
 describe('Identity Logic', () => {

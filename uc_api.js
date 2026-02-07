@@ -19,6 +19,7 @@ const DRY_RUN = false;
  */
 class UnitCommanderAPI {
   constructor() {
+    this.supabase = supabase;
     this.client = axios.create({
       baseURL: UC_BASE_URL,
       headers: {
@@ -29,56 +30,76 @@ class UnitCommanderAPI {
   }
 
   /**
-   * Identity Management via Supabase
+   * Identity Management via Unified Personnel Table
    */
   async saveLink(discordId, ucProfileId) {
     console.log(`[SUPABASE] Linking Discord:${discordId} to UC:${ucProfileId}`);
     const { error } = await supabase
-      .from('personnel_links')
-      .upsert({ discord_id: discordId, uc_profile_id: ucProfileId }, { onConflict: 'discord_id' });
-    
+      .from('personnel')
+      .upsert(
+        {
+          discord_id: discordId,
+          uc_profile_id: ucProfileId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'discord_id' },
+      );
+
     if (error) console.error('[SUPABASE] saveLink Error:', error.message);
   }
 
   async saveSteamLink(discordId, steamId) {
     console.log(`[SUPABASE] Linking Discord:${discordId} to Steam:${steamId}`);
     const { error } = await supabase
-      .from('personnel_links')
-      .upsert({ discord_id: discordId, steam_id: steamId }, { onConflict: 'discord_id' });
-    
+      .from('personnel')
+      .upsert(
+        {
+          discord_id: discordId,
+          steam_id: steamId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'discord_id' },
+      );
+
     if (error) console.error('[SUPABASE] saveSteamLink Error:', error.message);
   }
 
   async getLinks() {
-    const { data, error } = await supabase.from('personnel_links').select('*');
+    const { data, error } = await supabase
+      .from('personnel')
+      .select('discord_id, uc_profile_id');
     if (error) {
       console.error('[SUPABASE] getLinks Error:', error.message);
-      return [];
+      return {};
     }
-    // Convert to old format for compatibility if needed, 
-    // but better to use the array directly.
     const mapping = {};
-    data.forEach(row => {
+    data.forEach((row) => {
       if (row.uc_profile_id) mapping[row.discord_id] = row.uc_profile_id;
     });
     return mapping;
   }
 
   async getSteamLinks() {
-    const { data, error } = await supabase.from('personnel_links').select('discord_id, steam_id');
+    const { data, error } = await supabase
+      .from('personnel')
+      .select('discord_id, steam_id');
     if (error) {
       console.error('[SUPABASE] getSteamLinks Error:', error.message);
       return {};
     }
     const mapping = {};
-    data.forEach(row => {
+    data.forEach((row) => {
       if (row.steam_id) mapping[row.discord_id] = row.steam_id;
     });
     return mapping;
   }
 
   async removeLink(discordId) {
-    const { error } = await supabase.from('personnel_links').delete().eq('discord_id', discordId);
+    // We don't delete the record, just clear the links to preserve personnel history
+    const { error } = await supabase
+      .from('personnel')
+      .update({ uc_profile_id: null, steam_id: null })
+      .eq('discord_id', discordId);
     return !error;
   }
 
@@ -86,18 +107,14 @@ class UnitCommanderAPI {
    * Unit Commander API Methods
    */
   async submitAttendance(eventId, profileId, statusId) {
-    if (DRY_RUN) {
-      console.log(`[DRY-RUN] Attendance: Event:${eventId}, Profile:${profileId}`);
-      return true;
-    }
+    if (DRY_RUN) return true;
     try {
       await this.client.post(`/attendance/event/${eventId}`, {
         profile_id: profileId,
         attendance_status_id: statusId,
       });
       return true;
-    } catch (_error) {
-      console.error('UC API Error (submitAttendance):', error.message);
+    } catch (error) {
       return false;
     }
   }
@@ -106,7 +123,7 @@ class UnitCommanderAPI {
     try {
       const response = await this.client.get(`/profiles/${profileId}`);
       return response.data;
-    } catch (_error) {
+    } catch (error) {
       return null;
     }
   }
@@ -115,45 +132,35 @@ class UnitCommanderAPI {
     try {
       const response = await this.client.get('/profiles');
       return response.data;
-    } catch (_error) {
+    } catch (error) {
       return [];
     }
   }
 
   async getProfileByDiscordMember(member) {
     if (!member) return null;
-    
+
     const { data: link } = await supabase
-      .from('personnel_links')
+      .from('personnel')
       .select('uc_profile_id')
       .eq('discord_id', member.id)
       .single();
 
     if (link?.uc_profile_id) {
       const profile = await this.getProfile(link.uc_profile_id);
-      if (profile) {
-        const status = profile.status?.toUpperCase();
-        if (status === 'ACTIVE' || !status) return profile;
-      }
+      if (
+        profile &&
+        (profile.status?.toUpperCase() === 'ACTIVE' || !profile.status)
+      )
+        return profile;
     }
 
-    // Advanced tactical name matching
     const profiles = await this.getProfiles();
     const discordName = member.displayName.toLowerCase();
-    
-    // Strict filter: Must be ACTIVE.
-    const activeProfiles = profiles.filter((p) => {
-      const status = p.status?.toUpperCase();
-      return !status || status === 'ACTIVE';
-    });
 
-    return activeProfiles.find((p) => {
+    return profiles.find((p) => {
       const alias = p.alias.toLowerCase();
-
-      // 1. Exact match
       if (alias === discordName) return true;
-
-      // 2. Clean the UC alias
       const cleanedAlias = alias
         .replace(
           /^(gen|maj gen|brig|col|lt col|maj|capt|lt|2lt|wo1|wo2|ssgt|csgt|sgt|cpl|lcpl|tpr|sig|rct|pte|am|as1|as2|po|cpo|cmdr|sqn ldr|flt lt|fg off|plt off|wg cdr)\.?\s+/i,
@@ -161,10 +168,7 @@ class UnitCommanderAPI {
         )
         .replace(/\s+\[.*?\]$/, '')
         .trim();
-
-      // 3. Clean the Discord name
       const cleanedDiscord = discordName.replace(/^\[.*?\]\s+/, '').trim();
-
       return (
         cleanedAlias === cleanedDiscord ||
         alias.includes(cleanedDiscord) ||
@@ -177,7 +181,7 @@ class UnitCommanderAPI {
     try {
       const response = await this.client.get('/ranks');
       return response.data;
-    } catch (_error) {
+    } catch (error) {
       return [];
     }
   }
@@ -185,8 +189,8 @@ class UnitCommanderAPI {
   async getEvents() {
     try {
       const response = await this.client.get('/events');
-      return response.data.filter(e => e.status === 'ACTIVE');
-    } catch (_error) {
+      return response.data.filter((e) => e.status === 'ACTIVE');
+    } catch (error) {
       return [];
     }
   }
@@ -200,13 +204,68 @@ class UnitCommanderAPI {
     }
   }
 
-  async getAttendanceForProfile(profileId) {
+  async getAwards() {
     try {
-      const response = await this.client.get(`/attendance/profile/${profileId}`);
+      const response = await this.client.get('/awards');
       return response.data;
     } catch (_error) {
       return [];
     }
+  }
+
+  async getUnits() {
+    try {
+      const response = await this.client.get('/units');
+      return response.data;
+    } catch (_error) {
+      return [];
+    }
+  }
+
+  async getCampaigns() {
+    try {
+      const response = await this.client.get('/campaigns');
+      return response.data;
+    } catch (_error) {
+      return [];
+    }
+  }
+
+  async getAttendanceForProfile(profileId) {
+    try {
+      const response = await this.client.get(
+        `/attendance/profile/${profileId}`,
+      );
+      return response.data;
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * DIRECT PERSONNEL MANAGEMENT (Supabase)
+   */
+  async updatePersonnelRank(discordId, rankName, priority) {
+    const { error } = await supabase
+      .from('personnel')
+      .update({
+        rank: rankName,
+        rank_priority: priority,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('discord_id', discordId);
+    return !error;
+  }
+
+  async updatePersonnelStatus(discordId, status, lastSeen = null) {
+    const updateData = { status, updated_at: new Date().toISOString() };
+    if (lastSeen) updateData.last_seen = lastSeen;
+
+    const { error } = await supabase
+      .from('personnel')
+      .update(updateData)
+      .eq('discord_id', discordId);
+    return !error;
   }
 }
 

@@ -143,7 +143,8 @@ const commands = [
       {
         name: 'steam_id',
         type: 3,
-        description: 'Your SteamID64. Leave empty to auto-detect from active server session.',
+        description:
+          'Your SteamID64. Leave empty to auto-detect from active server session.',
         required: false,
       },
     ],
@@ -183,8 +184,91 @@ const commands = [
     description: 'Get the real-time status of the UKSF game server.',
   },
   {
+    name: 'mission',
+    description: 'View the unit operational history and mission logs.',
+    options: [
+      {
+        name: 'recent',
+        type: 1, // SUB_COMMAND
+        description: 'Show the last 5 missions completed.'
+      }
+    ]
+  },
+  {
+    name: 'personnel',
+    description: 'Manage unit personnel records.',
+    default_member_permissions: '8', // ADMINISTRATOR
+    options: [
+      {
+        name: 'promote',
+        type: 1, // SUB_COMMAND
+        description: 'Promote or demote a member.',
+        options: [
+          {
+            name: 'member',
+            type: 6,
+            description: 'The member to update',
+            required: true,
+          },
+          {
+            name: 'rank',
+            type: 3,
+            description: 'New rank abbreviation (e.g. Sgt)',
+            required: true,
+            autocomplete: true,
+          },
+        ],
+      },
+      {
+        name: 'discharge',
+        type: 1, // SUB_COMMAND
+        description: 'Discharge a member from service.',
+        options: [
+          {
+            name: 'member',
+            type: 6,
+            description: 'The member to discharge',
+            required: true,
+          },
+          {
+            name: 'type',
+            type: 3,
+            description: 'Discharge type',
+            required: true,
+            choices: [
+              { name: 'Honorable', value: 'HONORABLE' },
+              { name: 'Dishonorable', value: 'DISHONORABLE' },
+              { name: 'Medical', value: 'MEDICAL' },
+              { name: 'Administrative (AWOL)', value: 'AWOL' },
+            ],
+          },
+          {
+            name: 'reason',
+            type: 3,
+            description: 'Official reason for discharge',
+            required: true,
+          },
+        ],
+      },
+      {
+        name: 'info',
+        type: 1,
+        description: 'View detailed database record for a member.',
+        options: [
+          {
+            name: 'member',
+            type: 6,
+            description: 'The member to investigate',
+            required: true,
+          },
+        ],
+      },
+    ],
+  },
+  {
     name: 'sync',
-    description: 'Automatically link your SteamID by detecting your current game session.',
+    description:
+      'Automatically link your SteamID by detecting your current game session.',
   },
 ];
 

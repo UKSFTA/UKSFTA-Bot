@@ -72,7 +72,9 @@ async function renderIDCard(profile, rank, deployments) {
 
   // 4. Logo / Crest
   try {
-    const crest = await loadImage('https://raw.githubusercontent.com/co-analysis/govukhugo/master/static/images/govuk-crest.png');
+    const crest = await loadImage(
+      'https://raw.githubusercontent.com/co-analysis/govukhugo/master/static/images/govuk-crest.png',
+    );
     ctx.globalAlpha = 0.8;
     ctx.drawImage(crest, 20, 10, 35, 35);
     ctx.globalAlpha = 1.0;
@@ -85,19 +87,21 @@ async function renderIDCard(profile, rank, deployments) {
   // 5. Photo Box
   ctx.fillStyle = '#000';
   ctx.fillRect(30, 85, 170, 210);
-  
+
   // Security Hologram Overlay behind photo
   ctx.strokeStyle = 'rgba(0, 206, 125, 0.2)';
   ctx.lineWidth = 1;
-  for(let i=0; i<170; i+=10) {
+  for (let i = 0; i < 170; i += 10) {
     ctx.beginPath();
-    ctx.moveTo(30+i, 85);
-    ctx.lineTo(30+i, 295);
+    ctx.moveTo(30 + i, 85);
+    ctx.lineTo(30 + i, 295);
     ctx.stroke();
   }
 
   try {
-    const avatarUrl = profile.avatar_url || 'https://raw.githubusercontent.com/co-analysis/govukhugo/master/static/images/govuk-crest.png';
+    const avatarUrl =
+      profile.avatar_url ||
+      'https://raw.githubusercontent.com/co-analysis/govukhugo/master/static/images/govuk-crest.png';
     const avatar = await loadImage(avatarUrl);
     drawImageCover(ctx, avatar, 30, 85, 170, 210);
   } catch (_e) {
@@ -105,7 +109,7 @@ async function renderIDCard(profile, rank, deployments) {
     ctx.font = '12px monospace';
     ctx.fillText('IMAGE_NOT_AVAILABLE', 50, 190);
   }
-  
+
   // Photo Border
   ctx.strokeStyle = '#444';
   ctx.lineWidth = 2;
@@ -124,7 +128,7 @@ async function renderIDCard(profile, rank, deployments) {
   ctx.fillStyle = '#aaa';
   const dataY = 180;
   const lineSpacing = 22;
-  
+
   ctx.fillText('SERVICE NO:', 220, dataY);
   ctx.fillStyle = '#fff';
   ctx.fillText(`UKSF-${profile.id.toString().padStart(6, '0')}`, 320, dataY);
@@ -132,7 +136,11 @@ async function renderIDCard(profile, rank, deployments) {
   ctx.fillStyle = '#aaa';
   ctx.fillText('ASSIGNMENT:', 220, dataY + lineSpacing);
   ctx.fillStyle = '#fff';
-  ctx.fillText(profile.unit?.name || 'DSF_DIRECTORATE', 320, dataY + lineSpacing);
+  ctx.fillText(
+    profile.unit?.name || 'DSF_DIRECTORATE',
+    320,
+    dataY + lineSpacing,
+  );
 
   ctx.fillStyle = '#aaa';
   ctx.fillText('STATUS:', 220, dataY + lineSpacing * 2);
@@ -142,7 +150,11 @@ async function renderIDCard(profile, rank, deployments) {
   ctx.fillStyle = '#aaa';
   ctx.fillText('OPS_COUNT:', 220, dataY + lineSpacing * 3);
   ctx.fillStyle = '#fff';
-  ctx.fillText(deployments.toString().padStart(3, '0'), 320, dataY + lineSpacing * 3);
+  ctx.fillText(
+    deployments.toString().padStart(3, '0'),
+    320,
+    dataY + lineSpacing * 3,
+  );
 
   // 7. Security Features
   // Microchip
@@ -151,16 +163,16 @@ async function renderIDCard(profile, rank, deployments) {
   ctx.strokeStyle = '#8a6d3b';
   ctx.lineWidth = 1;
   ctx.strokeRect(520, 80, 50, 40);
-  for(let i=0; i<4; i++) {
+  for (let i = 0; i < 4; i++) {
     ctx.beginPath();
-    ctx.moveTo(520, 80 + i*10);
-    ctx.lineTo(570, 80 + i*10);
+    ctx.moveTo(520, 80 + i * 10);
+    ctx.lineTo(570, 80 + i * 10);
     ctx.stroke();
   }
 
   // Barcode
   ctx.fillStyle = '#fff';
-  for(let i=0; i<150; i+= Math.random() * 5 + 1) {
+  for (let i = 0; i < 150; i += Math.random() * 5 + 1) {
     const w = Math.random() * 3 + 1;
     ctx.fillRect(220 + i, 280, w, 30);
   }
@@ -175,7 +187,10 @@ async function renderIDCard(profile, rank, deployments) {
   // 9. Footer Security String
   ctx.fillStyle = '#444';
   ctx.font = '9px monospace';
-  const hash = Buffer.from(profile.id.toString()).toString('hex').toUpperCase().substring(0, 24);
+  const hash = Buffer.from(profile.id.toString())
+    .toString('hex')
+    .toUpperCase()
+    .substring(0, 24);
   ctx.fillText(`ID_VERIFICATION_TOKEN: ${hash}`, 30, height - 15);
 
   return canvas.toBuffer('image/png');
@@ -185,62 +200,77 @@ async function renderIDCard(profile, rank, deployments) {
  * Renders a clean operational activity chart
  */
 async function renderActivityChart(attendance) {
-  const chartJSNodeCanvas = new ChartJSNodeCanvas({ 
-    width: chartWidth, 
-    height: chartHeight, 
-    backgroundColour: '#1a1a1a' 
+  const chartJSNodeCanvas = new ChartJSNodeCanvas({
+    width: chartWidth,
+    height: chartHeight,
+    backgroundColour: '#1a1a1a',
   });
-  
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
   const last6Months = [];
   const now = new Date();
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    last6Months.push({ 
-      month: months[d.getMonth()], 
-      count: 0, 
-      key: `${d.getFullYear()}-${d.getMonth()}` 
+    last6Months.push({
+      month: months[d.getMonth()],
+      count: 0,
+      key: `${d.getFullYear()}-${d.getMonth()}`,
     });
   }
 
-  attendance.forEach(record => {
+  attendance.forEach((record) => {
     const d = new Date(record.event?.date || record.date);
     const key = `${d.getFullYear()}-${d.getMonth()}`;
-    const entry = last6Months.find(m => m.key === key);
+    const entry = last6Months.find((m) => m.key === key);
     if (entry) entry.count++;
   });
 
   const configuration = {
     type: 'line',
     data: {
-      labels: last6Months.map(m => m.month),
-      datasets: [{
-        label: 'OPERATIONAL TEMPO',
-        data: last6Months.map(m => m.count),
-        fill: true,
-        backgroundColor: 'rgba(0, 206, 125, 0.1)',
-        borderColor: '#00ce7d',
-        borderWidth: 2,
-        pointBackgroundColor: '#00ce7d',
-        tension: 0.3
-      }]
+      labels: last6Months.map((m) => m.month),
+      datasets: [
+        {
+          label: 'OPERATIONAL TEMPO',
+          data: last6Months.map((m) => m.count),
+          fill: true,
+          backgroundColor: 'rgba(0, 206, 125, 0.1)',
+          borderColor: '#00ce7d',
+          borderWidth: 2,
+          pointBackgroundColor: '#00ce7d',
+          tension: 0.3,
+        },
+      ],
     },
     options: {
       plugins: {
-        legend: { display: false }
+        legend: { display: false },
       },
       scales: {
-        y: { 
-          grid: { color: '#333' }, 
+        y: {
+          grid: { color: '#333' },
           ticks: { color: '#888', font: { family: 'monospace' } },
-          beginAtZero: true
+          beginAtZero: true,
         },
-        x: { 
-          grid: { display: false }, 
-          ticks: { color: '#888', font: { family: 'monospace' } } 
-        }
-      }
-    }
+        x: {
+          grid: { display: false },
+          ticks: { color: '#888', font: { family: 'monospace' } },
+        },
+      },
+    },
   };
 
   return chartJSNodeCanvas.renderToBuffer(configuration);

@@ -31,15 +31,21 @@ class SteamAPI {
     if (!steamIds || steamIds.length === 0) return [];
 
     try {
-      const response = await this.client.get('/ISteamUser/GetPlayerSummaries/v0002/', {
-        params: {
-          steamids: steamIds.join(','),
+      const response = await this.client.get(
+        '/ISteamUser/GetPlayerSummaries/v0002/',
+        {
+          params: {
+            steamids: steamIds.join(','),
+          },
         },
-      });
+      );
 
       return response.data.response.players || [];
     } catch (error) {
-      console.error('[SteamAPI] Error fetching player summaries:', error.message);
+      console.error(
+        '[SteamAPI] Error fetching player summaries:',
+        error.message,
+      );
       return [];
     }
   }
@@ -53,11 +59,14 @@ class SteamAPI {
     if (!this.apiKey) return null;
 
     try {
-      const response = await this.client.get('/IGameServersService/GetServerList/v1/', {
-        params: {
-          filter: `addr\${ip}`,
+      const response = await this.client.get(
+        '/IGameServersService/GetServerList/v1/',
+        {
+          params: {
+            filter: `addr\${ip}`,
+          },
         },
-      });
+      );
 
       const servers = response.data.response.servers;
       return servers && servers.length > 0 ? servers[0] : null;
