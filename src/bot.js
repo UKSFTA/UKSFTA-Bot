@@ -1,15 +1,9 @@
 const {
   Client,
   GatewayIntentBits,
-  EmbedBuilder,
   Collection,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   ActivityType,
   MessageFlags,
-  PermissionFlagsBits,
-  AttachmentBuilder,
 } = require('discord.js');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -19,9 +13,8 @@ require('dotenv').config();
 
 // Core Modules
 const ucApi = require('./modules/uc_api');
-const steamApi = require('./modules/steam_api');
 const rcon = require('./modules/rcon');
-const renderer = require('./modules/renderer');
+const _renderer = require('./modules/renderer');
 const { cleanName, calculateBeGuid } = require('./utils/helpers');
 
 const client = new Client({
@@ -54,7 +47,17 @@ const AUTO_ATTENDANCE_CONFIG = {
 // State
 client.commands = new Collection();
 const activeDossiers = new Collection();
-const sessionTracker = new Map();
+let sessionTracker = new Map();
+try {
+  if (fs.existsSync('./data/attendance_buffer.json')) {
+    const data = fs.readFileSync('./data/attendance_buffer.json', 'utf8');
+    sessionTracker = new Map(JSON.parse(data));
+    console.log(`[SYSTEM] Restored ${sessionTracker.size} attendance records from buffer.`);
+  }
+} catch (e) {
+  console.error('[SYSTEM] Failed to load attendance buffer:', e);
+}
+
 const inGameCommandCache = new Map();
 let currentMission = { id: null, name: 'BOOTING', map: 'UNKNOWN', players: 0 };
 
@@ -108,7 +111,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton()) return await handleButton(interaction);
   } catch (error) {
     console.error(`[INTERACTION ERROR] ${interaction.commandName || 'Unknown'}:`, error);
-    const errorMsg = { content: '⚠️ A critical error occurred while processing this request.', flags: [MessageFlags.Ephemeral] };
+    const errorMsg = { content: 'A critical error occurred while processing this request.', flags: [MessageFlags.Ephemeral] };
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply(errorMsg).catch(() => null);
     } else {
@@ -169,7 +172,7 @@ async function resolveIdentity(playerName) {
 async function handleInGameCommand(output) {
   const chatMatch = output.match(/^\((Global|Side|Command|Group|Vehicle)\)\s+(.+?):\s+!(.+)$/i);
   if (chatMatch) {
-    const [_, channel, playerName, fullCmd] = chatMatch;
+    const [_, _channel, playerName, fullCmd] = chatMatch;
     const [command, ..._args] = fullCmd.trim().split(' ');
     
     const cmdKey = `${playerName}:${fullCmd}`;
@@ -182,11 +185,12 @@ async function handleInGameCommand(output) {
       case 'verify':
         rcon.execute(`say -1 [BOT] Hello ${playerName}. To verify your identity, use the /verify command in Discord.`);
         break;
-      case 'status':
+      case 'status': {
         const state = await Gamedig.query(AUTO_ATTENDANCE_CONFIG.server).catch(() => null);
         if (state) rcon.execute(`say -1 [BOT] Server Status: ${state.players.length}/${state.maxplayers} personnel. Map: ${state.map}`);
         break;
-      case 'sync':
+      }
+      case 'sync': {
         const { steamId, beGuid } = await resolveIdentity(playerName);
         if (steamId || beGuid) {
           const { data: personnel } = await ucApi.supabase.from('personnel').select('discord_id, display_name, status');
@@ -201,6 +205,7 @@ async function handleInGameCommand(output) {
           }
         }
         break;
+      }
       case 'help':
         rcon.execute('say -1 [BOT] In-Game Commands: !status, !sync, !verify.');
         break;
@@ -221,9 +226,12 @@ async function startMissionLogging(missionName) {
 async function handleAutocomplete(interaction) {
   const focused = interaction.options.getFocused(true);
   let choices = [];
-  if (focused.name === 'uc_event') {
+  if (focused.name === 'event') {
     const events = await ucApi.getEvents();
     choices = events.map(e => ({ name: `${e.name} (${e.date})`, value: e.id.toString() }));
+  } else if (focused.name === 'status' && interaction.commandName === 'attendance') {
+    const statuses = await ucApi.getAttendanceStatuses();
+    choices = statuses.map(s => ({ name: s.name, value: s.id.toString() }));
   } else if (focused.name === 'target' && interaction.commandName === 'rcon') {
     const rconPlayers = await rcon.getPlayers();
     choices = rconPlayers.map(p => ({ name: p.name, value: p.name }));
@@ -248,8 +256,13 @@ async function handleButton(interaction) {
     if (!state || interaction.user.id !== id.split('_')[1]) return interaction.reply({ content: 'SESSION EXPIRED.', flags: [MessageFlags.Ephemeral] });
     state.tab = parts[2];
     const dossierCmd = client.commands.get('dossier');
-    const { embed, components, files } = await dossierCmd.renderTab(state.profile, state.target, state.deployments, state.attendance, state.tab, id, COLORS);
+    const { embed, components, files } = await dossierCmd.renderTab(state.profile, state.target, 0, [], state.tab, id, COLORS);
     await interaction.update({ embeds: [embed], components, files });
+  }
+
+  if (action === 'confirm_auto' || action === 'discard_auto') {
+    const attendanceCmd = client.commands.get('attendance');
+    return attendanceCmd.execute(interaction, COLORS);
   }
 
   if (action === 'verify_confirm') {
@@ -257,21 +270,21 @@ async function handleButton(interaction) {
     const steamId = parts[2] !== 'NONE' ? parts[2] : null;
     const beGuid = parts[3] !== 'NONE' ? parts[3] : null;
     await ucApi.saveLink(interaction.user.id, ucProfileId);
-    let msg = '✅ **UNIT COMMANDER LINK ESTABLISHED.**';
+    let msg = 'UNIT COMMANDER LINK ESTABLISHED.';
     if (steamId) {
       await ucApi.saveSteamLink(interaction.user.id, steamId);
-      msg += `\n✅ **STEAM LINK ESTABLISHED** (ID: \`${steamId}\`)`;
+      msg += `\nSTEAM LINK ESTABLISHED (ID: ${steamId})`;
       const calculatedGuid = calculateBeGuid(steamId);
       if (calculatedGuid) await ucApi.saveGuid(interaction.user.id, calculatedGuid);
     }
     if (beGuid) {
       await ucApi.saveGuid(interaction.user.id, beGuid);
-      msg += `\n✅ **GUID LINK ESTABLISHED** (ID: \`${beGuid.substring(0, 8)}...\`)`;
+      msg += `\nGUID LINK ESTABLISHED (ID: ${beGuid.substring(0, 8)}...)`;
     }
     return interaction.update({ content: `${msg}\n\nWelcome to the network.`, embeds: [], components: [], files: [] });
   }
 
-  if (action === 'verify_deny') return interaction.update({ content: '❌ **IDENTIFICATION ABORTED.**', embeds: [], components: [], files: [] });
+  if (action === 'verify_deny') return interaction.update({ content: 'IDENTIFICATION ABORTED.', embeds: [], components: [], files: [] });
 }
 
 async function monitorGameServer(forceLog = false) {
@@ -279,28 +292,33 @@ async function monitorGameServer(forceLog = false) {
   const isOpDay = now.getDay() === AUTO_ATTENDANCE_CONFIG.opTime.day;
   const isOpTime = now.getHours() >= AUTO_ATTENDANCE_CONFIG.opTime.startHour && now.getHours() < AUTO_ATTENDANCE_CONFIG.opTime.endHour;
 
-  if (!forceLog && (!isOpDay || !isOpTime)) {
-    if (sessionTracker.size > 0 && isOpDay && now.getHours() === AUTO_ATTENDANCE_CONFIG.opTime.endHour) await finalizeOpAttendance();
-    return;
-  }
+  if (!forceLog && (!isOpDay || !isOpTime)) return;
 
   try {
     const state = await Gamedig.query(AUTO_ATTENDANCE_CONFIG.server);
-    const rconPlayers = await rcon.getPlayers();
+    let sessionUpdated = false;
+
     for (const player of state.players) {
       const { steamId } = await resolveIdentity(player.name);
       if (steamId) {
+        // 1. Update Live Status (Last Seen)
         await ucApi.supabase.from('personnel').update({ last_seen: now.toISOString(), status: 'ACTIVE', updated_at: now.toISOString() }).eq('steam_id', steamId);
+        
+        // 2. Track Session Duration (Only during Op Time)
+        if (isOpDay && isOpTime) {
+          const currentMinutes = sessionTracker.get(steamId) || 0;
+          sessionTracker.set(steamId, currentMinutes + 5); // Assumes 5 min interval
+          sessionUpdated = true;
+        }
       }
     }
-    if (now.getHours() === 3 && now.getMinutes() < 5) {
-      const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000)).toISOString();
-      await ucApi.supabase.from('personnel').update({ status: 'INACTIVE' }).lt('last_seen', thirtyDaysAgo).eq('status', 'ACTIVE');
+
+    if (sessionUpdated) {
+      fs.writeFileSync('./data/attendance_buffer.json', JSON.stringify(Array.from(sessionTracker.entries())));
     }
+
   } catch (e) { console.error('[MONITOR] Error:', e.message); }
 }
-
-async function finalizeOpAttendance() { /* logic */ }
 
 process.on('unhandledRejection', (r) => console.error('[CRITICAL] Unhandled Rejection:', r));
 process.on('uncaughtException', (e) => console.error('[CRITICAL] Uncaught Exception:', e));

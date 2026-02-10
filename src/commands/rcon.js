@@ -1,6 +1,5 @@
 const { EmbedBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const rcon = require('../modules/rcon');
-const { cleanName } = require('../utils/helpers');
 
 module.exports = {
   name: 'rcon',
@@ -56,7 +55,7 @@ module.exports = {
         } else if (action === 'ban') {
           const duration = interaction.options.getInteger('duration') || 0;
           command = `ban ${player.id} ${duration} ${reason}`;
-          logMsg = `Banned: ${targetName} (${duration === 0 ? 'Perm' : duration + 'm'})`;
+          logMsg = `Banned: ${targetName} (${duration === 0 ? 'Perm' : `${duration}m`})`;
         }
       } else if (subcommand === 'raw') {
         command = interaction.options.getString('command');

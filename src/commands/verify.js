@@ -1,7 +1,6 @@
 const { EmbedBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const ucApi = require('../modules/uc_api');
 const renderer = require('../modules/renderer');
-const { cleanName, calculateBeGuid } = require('../utils/helpers');
 
 module.exports = {
   name: 'verify',

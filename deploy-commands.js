@@ -89,6 +89,41 @@ const commands = [
   { name: 'steam', description: 'Link SteamID.', options: [{ name: 'steam_id', type: 3, description: 'SteamID64', required: false }] },
   { name: 'verify', description: 'Unified identity setup.' },
   { name: 'sync', description: 'Auto-detect Steam link.' },
+  {
+    name: 'attendance',
+    description: 'Log personnel attendance for unit events.',
+    default_member_permissions: '8',
+    options: [
+      {
+        name: 'log',
+        type: 1,
+        description: 'Log manual attendance for a member.',
+        options: [
+          { name: 'event', type: 3, description: 'The operation/event', required: true, autocomplete: true },
+          { name: 'member', type: 6, description: 'The personnel member', required: true },
+          { name: 'status', type: 3, description: 'Attendance status', required: true, autocomplete: true }
+        ]
+      },
+      {
+        name: 'bulk',
+        type: 1,
+        description: 'Bulk log all currently online personnel for an event.',
+        options: [
+          { name: 'event', type: 3, description: 'The operation/event', required: true, autocomplete: true },
+          { name: 'status', type: 3, description: 'Attendance status (Default: Present)', required: false, autocomplete: true }
+        ]
+      },
+      {
+        name: 'review',
+        type: 1,
+        description: 'Review and commit automated attendance buffer.',
+        options: [
+          { name: 'event', type: 3, description: 'The operation/event to attach to', required: true, autocomplete: true },
+          { name: 'threshold', type: 4, description: 'Minimum minutes required (Default: 30)', required: false }
+        ]
+      }
+    ]
+  },
   { name: 'help', description: 'Command reference.' }
 ];
 

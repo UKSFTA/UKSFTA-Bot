@@ -8,7 +8,7 @@ describe('UKSF Bot Environment', () => {
 });
 
 // Mocking uc_api to test resolution logic
-vi.mock('./uc_api', () => ({
+vi.mock('./src/modules/uc_api.js', () => ({
   default: {
     getProfiles: vi.fn(() => [
       { id: 1, alias: 'M. Barker', status: 'ACTIVE' },
@@ -19,7 +19,7 @@ vi.mock('./uc_api', () => ({
 
 describe('Identity Logic', () => {
   it('should match names correctly', async () => {
-    const ucApi = (await import('./uc_api')).default;
+    const ucApi = (await import('./src/modules/uc_api.js')).default;
     const profiles = await ucApi.getProfiles();
     expect(profiles).toHaveLength(2);
     expect(profiles[0].alias).toBe('M. Barker');

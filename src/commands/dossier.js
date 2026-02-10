@@ -25,7 +25,7 @@ module.exports = {
     await interaction.editReply({ embeds: [embed], components, files });
   },
 
-  async renderTab(profile, target, deployments, attendance, tab, dossierId, COLORS) {
+  async renderTab(profile, target, deployments, _attendance, tab, dossierId, COLORS) {
     const rank = profile.rank?.name || 'RECRUIT';
     const unit = profile.unit?.name || 'UKSF DIRECTORATE';
     const status = profile.status?.toUpperCase() || 'ACTIVE';

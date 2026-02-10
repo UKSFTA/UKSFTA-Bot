@@ -23,7 +23,7 @@ function cleanName(name) {
  */
 function calculateBeGuid(steamId64) {
   if (!steamId64) return null;
-  const hash = CryptoJS.MD5("BE" + steamId64).toString();
+  const hash = CryptoJS.MD5(`BE${steamId64}`).toString();
   return hash;
 }
 

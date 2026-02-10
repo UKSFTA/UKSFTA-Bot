@@ -1,6 +1,5 @@
 const { EmbedBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const ucApi = require('../modules/uc_api');
-const { cleanName } = require('../utils/helpers');
 
 module.exports = {
   name: 'personnel',

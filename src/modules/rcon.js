@@ -76,7 +76,7 @@ class RconManager {
           name: p.name || 'Unknown'
         };
       });
-    } catch (e) { return []; }
+    } catch (_e) { return []; }
   }
 
   createListener(callback) {

@@ -6,7 +6,7 @@ const { cleanName } = require('../utils/helpers');
 
 module.exports = {
   name: 'status',
-  async execute(interaction, COLORS, resolveIdentity, AUTO_ATTENDANCE_CONFIG) {
+  async execute(interaction, COLORS, _resolveIdentity, AUTO_ATTENDANCE_CONFIG) {
     await interaction.deferReply();
 
     try {
