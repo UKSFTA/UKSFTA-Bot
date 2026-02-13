@@ -8,3 +8,6 @@ build/
 .npm
 # Ignore specific data files that should be in the cloud
 data/
+
+# DevOps Artifacts
+UNIT_HEALTH_REPORT.md
