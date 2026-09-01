@@ -19,25 +19,15 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         submodules: recursive
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v4
       with:
-        languages: python
+        languages: javascript-typescript
         build-mode: none
-        # Exclude large binary/production folders to prevent timeout/memory failures
-        config: |
-          paths-ignore:
-            - 'addons/**'
-            - 'media/**'
-            - 'releases/**'
-            - 'all_releases/**'
-            - '**/*.pbo'
-            - '**/*.ogv'
-            - '**/*.paa'
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
