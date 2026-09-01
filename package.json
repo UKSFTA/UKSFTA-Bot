@@ -14,7 +14,7 @@
     "security-scan": "npm audit --audit-level=critical"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.1",
+    "@supabase/supabase-js": "^2.112.4",
     "axios": "^1.16.0",
     "battle-node": "^0.1.2",
     "canvas": "^3.2.3",
