@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.11",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.11"
   },
   "type": "commonjs",
   "overrides": {
