@@ -18,7 +18,7 @@
     "axios": "^1.20.0",
     "battle-node": "^0.1.2",
     "canvas": "^3.2.3",
-    "chart.js": "^4.5.1",
+    "chart.js": "^4.6.1",
     "chartjs-node-canvas": "^5.0.0",
     "crypto-js": "^4.2.0",
     "discord.js": "^14.27.0",
